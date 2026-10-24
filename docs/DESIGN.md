@@ -2,8 +2,8 @@
 
 This document describes how stable-backlog reads its data, how it decides the
 state of each FAILED request, and the rules that keep it safe to run on data
-anyone can write. It covers the data layer (milestone M1); the command line
-and the web page will be added later.
+anyone can write. It covers the data layer and keeping the mirrors up to date;
+the command line and the web page will be added later.
 
 ## 1. Goal
 
@@ -50,6 +50,52 @@ Facts about these sources that the code relies on (checked 2026-10-24):
   so clones contain the full messages. A shallow clone of three months of the
   stable list is about 240 MB.
 - lore's web pages refuse scripted access; only the git mirror is used.
+
+### Keeping the mirrors up to date
+
+`sync.sync()` keeps both mirrors in a cache directory
+(`$XDG_CACHE_HOME/stable-backlog`, else `~/.cache/stable-backlog`), created
+with mode 0700. An existing directory that is a symlink, is owned by someone
+else or is writable by group or others is refused, not repaired. A lock file
+lets only one sync run at a time.
+
+To keep the load on lore and git.kernel.org low, the network is used at most
+once an hour: a sync within an hour of the last successful one that used the
+network fails before contacting anyone. That time is kept in `last-fetch` in
+the cache directory. Failed syncs and `--offline` rebuilds do not count; an
+unreadable time, or one in the future, is ignored with a warning.
+
+For each source:
+
+1. **First use**: a bare, shallow clone into `<name>.new`, moved into place
+   only when it worked. lore: the messages imported in the last 90 days
+   (`--shallow-since`); stable-queue: `--depth=1`, since only its current
+   state is used.
+2. **Later**: `git fetch <URL> +refs/heads/master:refs/stable-backlog/incoming`.
+   The URL is the constant from the list above, never the repository's
+   `remote.origin.url`. (A bare clone has no fetch refspec, so
+   `git fetch origin` would only update `FETCH_HEAD`.)
+3. `master` only moves forward. If the old `master` is not an ancestor of
+   the fetched commit (for example after a public-inbox purge rewrote the
+   history), nothing is changed and sync asks for `--reclone`.
+4. The newest commit must be recent: its committer date within 2 days for
+   lore (the longest gap seen in 85 days was 2.4 hours) and within 7 days
+   for stable-queue (32 hours in 19 days). Otherwise sync fails instead of
+   presenting old data as current.
+5. lore only: if the next epoch (`.../stable/git/3.git`) exists, sync fails,
+   because the current epoch would no longer receive messages.
+
+The snapshot is then rebuilt from scratch into `snapshot.sqlite.tmp`, which
+replaces `snapshot.sqlite` only when everything worked. It records both
+commits, their dates, the time of the sync and whether it was an `--offline`
+rebuild (no fetch and no freshness check). A failed sync leaves the previous
+snapshot as it was.
+
+Commands that use the network also get `-c credential.helper=` (no
+credential helper is ever asked), `-c http.followRedirects=false` (no
+redirect to another host) and `-c transfer.fsckObjects=true` (malformed
+objects are rejected), and `--` before the URL. The user's own git
+configuration, such as a proxy, still applies.
 
 ## 3. Reading messages
 
@@ -140,6 +186,10 @@ every message, header and patch file is treated as written by an attacker.
 | Never execute or apply message content (no `git am`/`apply`, no `eval`/`exec`/`pickle`, no shell) | whole package | `test_security.py` shell payloads |
 | Run only fixed `git` subcommands, with argument lists and `shell=False`; validate commit ids (`^[0-9a-f]{12,40}$`); never pass Message-IDs or subjects to git | `gitio.py` | `test_security.py`, `test_queue.py` |
 | Only `https` (`-c protocol.allow=never -c protocol.https.allow=always`); no lazy fetch while reading (`GIT_NO_LAZY_FETCH=1`) | `gitio.py` | |
+| Contact only the fixed sources: every network command checks its URL against an allow-list; no credential helper, no redirects, objects checked with fsck | `gitio.py`, `sync.py` | `test_security.py` URL allow-list; `test_sync.py` runs the real commands against local repositories, with no network |
+| The cache directory can be written only by its owner (0700; symlinks, other owners and group- or world-writable directories are refused); the lock file is opened without following symlinks | `cache.py` | `test_cache.py` |
+| A failed sync never replaces the snapshot; stale or rewritten mirrors fail loudly | `sync.py` | `test_sync.py` |
+| The network is used at most once an hour | `sync.py` | `test_sync.py` |
 | No network listener of any kind | whole package | |
 | File names never come from message content | whole package | `test_security.py` path-like Message-IDs |
 | Size and length limits before any regex (5 MB per message, 1000 characters per subject); no regex with nested unbounded repetition | `parse.py` | `test_security.py` huge lines |
@@ -167,13 +217,16 @@ they came from. Saving replaces the previous snapshot.
 | `status.py` | derive the state of each (upstream, tree) pair |
 | `store.py` | SQLite snapshot |
 | `sanitize.py` | make untrusted text safe for a terminal |
+| `cache.py` | the cache directory and the sync lock |
+| `sync.py` | update the mirrors and rebuild the snapshot |
 
-## 10. Known limitations (M1)
+## 10. Known limitations
 
-- No `sync` yet: fetching the mirrors, and the date checks after a fetch, come
-  with the CLI (M2).
+- Every sync rebuilds the snapshot from all messages in the local mirror.
 - Reading all of `releases/` lists one directory per git process; on a full
   stable-queue this takes about two minutes and will be made incremental.
+- The local lore mirror keeps growing (about 3 MB a day); old messages are
+  not pruned.
 - Replies such as "Queued for 6.1, thanks." are kept as replies but not used
   as a state; stable-queue is the source of truth for QUEUED.
 - A patch dropped from the queue is not reported as "dropped" yet; it simply

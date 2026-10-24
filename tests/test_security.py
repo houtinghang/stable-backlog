@@ -119,6 +119,97 @@ def test_validate_hash_rejects_options_and_garbage() -> None:
             gitio.validate_hash(bad)
 
 
+# --- rule 3: only the fixed https sources are ever contacted ------------------
+
+LORE_2 = "https://lore.kernel.org/stable/git/2.git"
+STABLE_QUEUE = "https://git.kernel.org/pub/scm/linux/kernel/git/stable/stable-queue.git"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        LORE_2,
+        "https://lore.kernel.org/stable/git/0.git",
+        "https://lore.kernel.org/stable/git/10.git",
+        STABLE_QUEUE,
+    ],
+    ids=["lore-2", "lore-0", "lore-10", "stable-queue"],
+)
+def test_validate_url_accepts_the_fixed_sources(url: str) -> None:
+    assert gitio.validate_url(url) == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://lore.kernel.org/stable/git/2.git",
+        "ssh://git@lore.kernel.org/stable/git/2.git",
+        "git://lore.kernel.org/stable/git/2.git",
+        "file:///home/u/src/lore/stable-2.git",
+        "ext::sh -c touch% PWNED",
+        "--upload-pack=touch PWNED",
+        "https://user:pw@lore.kernel.org/stable/git/2.git",
+        "https://lore.kernel.org.example.org/stable/git/2.git",
+        "https://lore.kernel.org/linux-mm/git/2.git",
+        "https://lore.kernel.org/stable/git/../../linux-mm/git/2.git",
+        "https://lore.kernel.org/stable/git/02.git",
+        "https://lore.kernel.org/stable/git/x.git",
+        "https://lore.kernel.org/stable/git/2.git/",
+        f"{LORE_2}\n",
+        f" {LORE_2}",
+        LORE_2.upper(),
+        f"{STABLE_QUEUE}?x=1",
+        "",
+    ],
+    ids=[
+        "http",
+        "ssh",
+        "git-protocol",
+        "file",
+        "ext-helper",
+        "option",
+        "credentials",
+        "lookalike-host",
+        "other-list",
+        "dotdot",
+        "leading-zero",
+        "not-a-number",
+        "trailing-slash",
+        "newline",
+        "leading-space",
+        "uppercase",
+        "query",
+        "empty",
+    ],
+)
+def test_validate_url_rejects_everything_else(url: str) -> None:
+    with pytest.raises(ValueError, match="not an allowed source"):
+        gitio.validate_url(url)
+
+
+def test_network_command_pins_protocols_and_ends_options(tmp_path: Path) -> None:
+    argv = gitio.network_command(tmp_path, ["fetch", "--no-tags"], LORE_2, ["+a:b"])
+    pairs = {argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg == "-c"}
+    assert {
+        "protocol.allow=never",
+        "protocol.https.allow=always",
+        "credential.helper=",
+        "http.followRedirects=false",
+        "transfer.fsckObjects=true",
+    } <= pairs
+    assert argv[-3:] == ["--", LORE_2, "+a:b"]
+    assert argv[argv.index("-C") + 1] == str(tmp_path)
+
+
+def test_network_command_refuses_a_bad_url_before_running_anything(
+    tmp_path: Path, git_calls: list[dict[str, Any]]
+) -> None:
+    git_calls.clear()
+    with pytest.raises(ValueError, match="not an allowed source"):
+        gitio.network_run(tmp_path, ["ls-remote"], "file:///etc")
+    assert git_calls == []
+
+
 # --- rule 5: file names never come from message content -----------------------
 
 

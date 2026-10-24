@@ -11,6 +11,7 @@ import json
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -98,6 +99,40 @@ _SELECT_OTHER = (
 
 class StoreError(RuntimeError):
     """The store is missing data or was written by an incompatible version."""
+
+
+@dataclass(frozen=True)
+class SnapshotInfo:
+    """When and from what a snapshot was built."""
+
+    synced_at: datetime
+    offline: bool  # rebuilt from the local mirrors without fetching
+    lore_newest: datetime  # committer (import) date of the newest lore commit
+    queue_newest: datetime  # committer date of the stable-queue commit
+
+
+def save_snapshot_info(conn: sqlite3.Connection, info: SnapshotInfo) -> None:
+    _set_meta(
+        conn,
+        {
+            "synced_at": info.synced_at.isoformat(),
+            "offline": int(info.offline),
+            "lore_newest": info.lore_newest.isoformat(),
+            "queue_newest": info.queue_newest.isoformat(),
+        },
+    )
+
+
+def load_snapshot_info(conn: sqlite3.Connection) -> SnapshotInfo:
+    meta = _meta(conn)
+    if "synced_at" not in meta:
+        raise StoreError("no sync information in the store (run sync first)")
+    return SnapshotInfo(
+        datetime.fromisoformat(meta["synced_at"]),
+        meta["offline"] == "1",
+        datetime.fromisoformat(meta["lore_newest"]),
+        datetime.fromisoformat(meta["queue_newest"]),
+    )
 
 
 @contextmanager

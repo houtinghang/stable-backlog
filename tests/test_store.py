@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -48,3 +49,26 @@ def test_empty_store_fails_loudly(tmp_path: Path) -> None:
             store.load_collected(conn)
         with pytest.raises(store.StoreError, match="sync"):
             store.load_queue(conn)
+
+
+def test_snapshot_info_round_trips(tmp_path: Path) -> None:
+    utc = timezone.utc
+    info = store.SnapshotInfo(
+        synced_at=datetime(2026, 10, 25, 12, 0, tzinfo=utc),
+        offline=True,
+        lore_newest=datetime(2026, 10, 24, 16, 47, tzinfo=utc),
+        queue_newest=datetime(2026, 10, 24, 14, 21, 52, tzinfo=timezone(timedelta(hours=-4))),
+    )
+    db = tmp_path / "s.sqlite3"
+    with store.open_store(db) as conn:
+        store.save_snapshot_info(conn, info)
+    with store.open_store(db) as conn:
+        assert store.load_snapshot_info(conn) == info
+
+
+def test_missing_snapshot_info_fails_loudly(tmp_path: Path) -> None:
+    with (
+        store.open_store(tmp_path / "s.sqlite3") as conn,
+        pytest.raises(store.StoreError, match="sync"),
+    ):
+        store.load_snapshot_info(conn)
