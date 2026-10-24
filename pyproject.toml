@@ -23,6 +23,9 @@ classifiers = [
 # Runtime: standard library only (plus the system `git`).
 dependencies = []
 
+[project.scripts]
+stable-backlog = "stable_backlog.cli:main"
+
 [project.urls]
 Source = "https://github.com/houtinghang/stable-backlog"
 
@@ -66,6 +69,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]           # assert is how pytest works
+"src/stable_backlog/cli.py" = ["T20"]  # the command's own output
 "tests/mailfactory.py" = ["E501"]  # verbatim copy of a long line from real FAILED mails
 "scripts/**" = ["T20", "S603", "S607"]  # one-off developer scripts print and run git
 

@@ -14,8 +14,9 @@ FAILED --> BACKPORT_POSTED --> QUEUED --> RELEASED
 ```
 
 **Status: early development.** The data layer (parsing the archive and
-stable-queue, deriving the state of each request) exists and is tested; there
-is no command-line interface, web page or release yet.
+stable-queue, deriving the state of each request) and `stable-backlog sync`
+exist and are tested; listing the requests, the web page and a release are not
+done yet.
 
 ## Why
 
@@ -29,8 +30,9 @@ some are not, and there is no list of the ones still open. Matthew Wilcox
 
 - It reads the public-inbox git mirror of the stable list
   (`https://lore.kernel.org/stable/git/<N>.git`) and stable-queue from
-  git.kernel.org. It never scrapes web pages, and it fetches at most once a
-  day.
+  git.kernel.org. It never scrapes web pages. After the first clone it fetches
+  only new data, and at most once an hour; the planned web page will be
+  updated once a day.
 - Requests and answers are matched by **upstream commit hash**: the FAILED
   report's `git cherry-pick -x <hash>` line against a backport's
   `[ Upstream commit <hash> ]`, `commit <hash> upstream.` or
@@ -44,6 +46,39 @@ some are not, and there is no list of the ones still open. Matthew Wilcox
   in the archive.
 
 Design details: [docs/DESIGN.md](docs/DESIGN.md).
+
+## Usage
+
+There is no release yet. From a checkout, on Linux with Python 3.10 or newer
+and `git`:
+
+```bash
+python3 -m venv ~/.venvs/stable-backlog
+~/.venvs/stable-backlog/bin/pip install .
+~/.venvs/stable-backlog/bin/stable-backlog sync
+```
+
+`sync` keeps bare mirrors of the lore stable archive and of stable-queue in
+`~/.cache/stable-backlog` (or `$XDG_CACHE_HOME/stable-backlog`) and rebuilds a
+local snapshot from them. The first run clones the last 90 days of the list
+(about 240 MB) and the current stable-queue (about 310 MB); later runs fetch
+only what is new. A run takes a few minutes, most of it reading stable-queue.
+
+To keep the load on lore and git.kernel.org low, `sync` uses the network at
+most once an hour: within an hour of the last successful run it stops with an
+error before contacting anyone. `--offline` rebuilds the snapshot from the
+local mirrors at any time.
+
+`sync` fails, and keeps the previous snapshot, when anything goes wrong, and
+also when a source looks stale: no new lore message for 2 days, or no
+stable-queue commit for 7 days. It prints a summary on stderr, including the
+messages it skipped and why.
+
+| Option | |
+|---|---|
+| `--cache-dir DIR` | keep the mirrors and the snapshot in `DIR` |
+| `--offline` | rebuild the snapshot from the local mirrors without fetching |
+| `--reclone lore` / `--reclone queue` | clone a source again, for example after its history was rewritten |
 
 ## Security
 
