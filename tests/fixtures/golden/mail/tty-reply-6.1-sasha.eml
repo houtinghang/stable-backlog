@@ -1,0 +1,18 @@
+From: Sasha Levin <sashal@kernel.org>
+Subject: Re: [PATCH 6.1.y] tty: port: fix tty_port_tty_vhangup() race
+Date: Fri,  9 Oct 2026 13:09:40 -0400
+Message-ID: <2026-10-09-1-daily-reply-0003-tty-vhangup-race-6-1@kernel.org>
+In-Reply-To: <20261008141627.1183294-1-ue081723@gmail.com>
+References: <20261008141627.1183294-1-ue081723@gmail.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+> Add the missing serialisation to tty_port_tty_vhangup() and
+> tty_port_hangup() so that the former does not return until the port has
+> been shut down also when there is a racing hangup.
+
+Queued for 6.1, thanks.
+
+-- 
+Thanks,
+Sasha

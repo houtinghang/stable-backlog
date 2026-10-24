@@ -1,0 +1,17 @@
+From: Sasha Levin <sashal@kernel.org>
+Subject: Re: [PATCH 5.10.y 1/2] tty: introduce and use tty_port_tty_vhangup() helper
+Date: Fri,  9 Oct 2026 13:09:42 -0400
+Message-ID: <2026-10-09-1-daily-reply-0005-tty-vhangup-helper-5-10@kernel.org>
+In-Reply-To: <20261008141723.1183340-1-ue081723@gmail.com>
+References: <20261008141723.1183340-1-ue081723@gmail.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+> Introduce a helper similar to tty_port_tty_hangup() (asynchronous) to
+> handle even vhangup (synchronous).
+
+Queued the series for 5.10, thanks.
+
+-- 
+Thanks,
+Sasha

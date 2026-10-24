@@ -1,0 +1,14 @@
+From: Ting-Han Hou <ue081723@gmail.com>
+Subject: [PATCH 5.15.y 2/2] tty: port: fix tty_port_tty_vhangup() race
+Date: Thu,  8 Oct 2026 22:16:49 +0800
+Message-ID: <20261008141649.1183309-2-ue081723@gmail.com>
+In-Reply-To: <2026100552-dumpster-splashed-bbd3@gregkh>
+References: <2026100552-dumpster-splashed-bbd3@gregkh>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+From: Johan Hovold <johan@kernel.org>
+
+[ Upstream commit b48820de8c1a596c5b99775524dfce73c6576c5d ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]

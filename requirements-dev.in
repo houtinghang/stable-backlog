@@ -1,0 +1,12 @@
+# Development tools only. stable-backlog itself has zero runtime dependencies.
+#
+# requirements-dev.txt is generated from this file with pinned versions and
+# hashes; regenerate it with:
+#   uv pip compile requirements-dev.in --universal --python-version 3.10 \
+#     --generate-hashes --exclude-newer <date two weeks ago> -o requirements-dev.txt
+# and install with:
+#   uv pip install --require-hashes -r requirements-dev.txt
+mypy
+pytest
+ruff
+uv

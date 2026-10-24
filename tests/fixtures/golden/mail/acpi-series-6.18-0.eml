@@ -1,0 +1,26 @@
+From: Ting-Han Hou <ue081723@gmail.com>
+Subject: [PATCH 6.18.y 0/3] ACPI: scan: fix the fixed event power button since 6.18.57
+Date: Sat, 24 Oct 2026 18:57:07 +0800
+Message-ID: <20261024105710.593-1-ue081723@gmail.com>
+In-Reply-To: <2026102308-twisting-bazooka-12b5@gregkh>
+References: <2026102308-twisting-bazooka-12b5@gregkh>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+Since 6.18.57, the ACPI power button is not bound to any driver when it
+is a fixed event device (LNXPWRBN), so ACPI power-off requests are
+ignored. This was reported for QEMU guests by Wolfgang Walter [1] and
+Frederic MARIE-JOSEPH [2], and for Dell servers (power button and iDRAC
+graceful shutdown) by Bob Anderson [1]. The ASRock H310CM-HDV report on
+linux-acpi [3] (ff_pwr_btn "STS invalid") may be the same problem.
+
+6.18.57 got 52d864019636 ("ACPI: button: Convert the driver to a
+platform one") as a dependency of fe80251152fe ("ACPI: button: Fix ACPI
+GPE handler leak during removal"), but not ab06eb920401 ("ACPI: scan:
+Register platform devices for fixed event buttons"), so fixed event
+buttons have no platform device to bind to. Bob found that
+ab06eb920401 fixes it, Wolfgang confirmed that, and Sasha queued it for
+6.18 [1]. 6.18.59-rc1 also converts the tiny power button driver to a
+platform one, so with CONFIG_ACPI_TINY_POWER_BUTTON=y the fixed event
+
+[ stable-backlog test fixture: rest of the message trimmed ]

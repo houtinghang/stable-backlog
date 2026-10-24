@@ -1,0 +1,30 @@
+From: SJ Park <sj@kernel.org>
+Subject: [PATCH 6.18.y 1/2] mm/damon/core: allow esz to be set to zero
+Date: Tue, 29 Sep 2026 10:44:55 -0700
+Message-ID: <20260929174456.9251-1-sj@kernel.org>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+From: Liew Rui Yan <aethernet65535@gmail.com>
+
+When the temporal quota goal tuner determines that the goal has been
+achieved (score >= 10000), it sets esz_bp to zero so that the esz becomes
+zero.  However, damos_set_effective_quota() clamps the esz to
+min_region_sz when quota->ms is set.
+
+This is a minor issue, the main problem is that it doesn't match the
+description in the documentation, which state that if the goal has already
+been [over-]achieved, the quota will be set to zero.
+
+Fix this by set quota (esz) as minimum as possible.
+
+Link: https://lore.kernel.org/20260908135413.97570-1-sj@kernel.org
+Fixes: 8bbde987c2b8 ("mm/damon/core: disallow time-quota setting zero esz")
+Signed-off-by: SJ Park <sj@kernel.org>
+Signed-off-by: Liew Rui Yan <aethernet65535@gmail.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Reviewed-by: SJ Park <sj@kernel.org>
+Cc: <stable@vger.kernel.org> # v7.1.x
+(cherry picked from commit 90179da203ba8b708c84a12a07cd44be0f346334)
+
+[ stable-backlog test fixture: rest of the message trimmed ]

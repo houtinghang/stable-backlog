@@ -1,0 +1,39 @@
+Subject: FAILED: patch "[PATCH] mm/damon/core: allow esz to be set to zero" failed to apply to 6.18-stable tree
+From: <gregkh@linuxfoundation.org>
+Date: Tue, 29 Sep 2026 10:28:00 +0200
+Message-ID: <2026092900-avenue-magnetize-e7a6@gregkh>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ANSI_X3.4-1968
+Content-Transfer-Encoding: 8bit
+
+
+The patch below does not apply to the 6.18-stable tree.
+If someone wants it applied there, or to any other stable or longterm
+tree, then please email the backport, including the original git commit
+id to <stable@vger.kernel.org>.
+
+To reproduce the conflict and resubmit, you may use the following commands:
+
+git fetch https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/ linux-6.18.y
+git checkout FETCH_HEAD
+git cherry-pick -x 90179da203ba8b708c84a12a07cd44be0f346334
+# <resolve conflicts, build, test, etc.>
+git commit -s
+git send-email --to '<stable@vger.kernel.org>' --in-reply-to '2026092900-avenue-magnetize-e7a6@gregkh' --subject-prefix 'PATCH 6.18.y' 'HEAD^..'
+
+Possible dependencies:
+
+
+
+thanks,
+
+greg k-h
+
+------------------ original commit in Linus's tree ------------------
+
+From 90179da203ba8b708c84a12a07cd44be0f346334 Mon Sep 17 00:00:00 2001
+From: Liew Rui Yan <aethernet65535@gmail.com>
+Date: Tue, 8 Sep 2026 06:54:11 -0700
+Subject: [PATCH] mm/damon/core: allow esz to be set to zero
+
+[ stable-backlog test fixture: rest of the message trimmed ]

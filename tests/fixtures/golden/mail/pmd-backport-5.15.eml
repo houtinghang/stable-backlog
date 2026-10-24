@@ -1,0 +1,14 @@
+From: Ting-Han Hou <ue081723@gmail.com>
+Subject: [PATCH 5.15.y] mm/huge_memory: transfer the pmd dirty bit to the folio on zap
+Date: Sat, 24 Oct 2026 16:38:48 +0800
+Message-ID: <20261024083848.496-1-ue081723@gmail.com>
+In-Reply-To: <2026090849-unrivaled-active-a82e@gregkh>
+References: <2026090849-unrivaled-active-a82e@gregkh>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+From: Usama Arif <usama.arif@linux.dev>
+
+[ Upstream commit fe6cf984939d8e12cb33a99673c8d026c5135e68 ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]

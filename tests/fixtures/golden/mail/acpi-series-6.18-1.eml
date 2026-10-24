@@ -1,0 +1,15 @@
+From: Ting-Han Hou <ue081723@gmail.com>
+Subject: [PATCH 6.18.y 1/3] ACPI: scan: Register platform devices for fixed event buttons
+Date: Sat, 24 Oct 2026 18:57:08 +0800
+Message-ID: <20261024105710.593-2-ue081723@gmail.com>
+In-Reply-To: <20261024105710.593-1-ue081723@gmail.com>
+References: <2026102308-twisting-bazooka-12b5@gregkh>
+ <20261024105710.593-1-ue081723@gmail.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+From: "Rafael J. Wysocki" <rafael.j.wysocki@intel.com>
+
+[ Upstream commit ab06eb9204010c61e754bf4e71ee6f554584714d ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]

@@ -1,0 +1,6 @@
+# Keep LF everywhere, also on Windows checkouts (core.autocrlf=true would
+# otherwise rewrite line endings).
+* text=auto eol=lf
+
+# Test fixtures are real mail and patch files: byte-exact, never converted.
+tests/fixtures/** -text

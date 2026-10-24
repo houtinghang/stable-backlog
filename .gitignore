@@ -1,0 +1,27 @@
+# --- private (decision 5,b, docs/PLAN.md section 8): never published ---
+/CLAUDE.md
+/.claude/
+/docs/PLAN.md
+/docs/PROGRESS.md
+/docs/PROGRESS-log.md
+/docs/private/
+
+# --- Python / build ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+/build/
+/dist/
+/.venv/
+/venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- local data: lore mirrors and caches stay outside the repo ---
+/cache/
+/out/
+*.sqlite
+*.sqlite3

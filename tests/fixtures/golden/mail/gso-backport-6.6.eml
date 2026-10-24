@@ -1,0 +1,14 @@
+From: Ting-Han Hou <ue081723@gmail.com>
+Subject: [PATCH 6.6.y] net: gso: limit recursive IP-in-IP segmentation
+Date: Sat, 24 Oct 2026 20:27:14 +0800
+Message-ID: <20261024122714.610-1-ue081723@gmail.com>
+In-Reply-To: <2026100306-reopen-gray-026f@gregkh>
+References: <2026100306-reopen-gray-026f@gregkh>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+From: Zihan Xi <zihanx@nebusec.ai>
+
+[ Upstream commit 006c8b834aed8b02bd8fb9fb05e9e7ead37d1763 ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]

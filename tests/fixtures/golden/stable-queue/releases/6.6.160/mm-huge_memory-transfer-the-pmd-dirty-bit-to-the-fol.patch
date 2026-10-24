@@ -1,0 +1,10 @@
+From 564ed2f41e3cecfd5020feeabfe7106a2dd8df43 Mon Sep 17 00:00:00 2001
+From: Sasha Levin <sashal@kernel.org>
+Date: Wed, 19 Aug 2026 03:12:22 -0700
+Subject: mm/huge_memory: transfer the pmd dirty bit to the folio on zap
+
+From: Usama Arif <usama.arif@linux.dev>
+
+[ Upstream commit fe6cf984939d8e12cb33a99673c8d026c5135e68 ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]

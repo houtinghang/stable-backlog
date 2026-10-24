@@ -1,0 +1,40 @@
+Subject: FAILED: patch "[PATCH] ACPI: scan: Avoid registering platform devices with resource" failed to apply to 6.18-stable tree
+From: <gregkh@linuxfoundation.org>
+Date: Fri, 23 Oct 2026 18:29:08 +0200
+Message-ID: <2026102308-twisting-bazooka-12b5@gregkh>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ANSI_X3.4-1968
+Content-Transfer-Encoding: 8bit
+
+
+The patch below does not apply to the 6.18-stable tree.
+If someone wants it applied there, or to any other stable or longterm
+tree, then please email the backport, including the original git commit
+id to <stable@vger.kernel.org>.
+
+To reproduce the conflict and resubmit, you may use the following commands:
+
+git fetch https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/ linux-6.18.y
+git checkout FETCH_HEAD
+git cherry-pick -x f234fdaae1cad8c39265e7ca0a14633076ec7154
+# <resolve conflicts, build, test, etc.>
+git commit -s
+git send-email --to '<stable@vger.kernel.org>' --in-reply-to '2026102308-twisting-bazooka-12b5@gregkh' --subject-prefix 'PATCH 6.18.y' 'HEAD^..'
+
+Possible dependencies:
+
+
+
+thanks,
+
+greg k-h
+
+------------------ original commit in Linus's tree ------------------
+
+From f234fdaae1cad8c39265e7ca0a14633076ec7154 Mon Sep 17 00:00:00 2001
+From: "Rafael J. Wysocki" <rafael.j.wysocki@intel.com>
+Date: Fri, 7 Aug 2026 12:22:37 +0200
+Subject: [PATCH] ACPI: scan: Avoid registering platform devices with resource
+ overlaps
+
+[ stable-backlog test fixture: rest of the message trimmed ]

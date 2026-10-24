@@ -1,0 +1,10 @@
+From 006c8b834aed8b02bd8fb9fb05e9e7ead37d1763 Mon Sep 17 00:00:00 2001
+From: Zihan Xi <zihanx@nebusec.ai>
+Date: Thu, 24 Sep 2026 05:15:21 +0000
+Subject: net: gso: limit recursive IP-in-IP segmentation
+
+From: Zihan Xi <zihanx@nebusec.ai>
+
+commit 006c8b834aed8b02bd8fb9fb05e9e7ead37d1763 upstream.
+
+[ stable-backlog test fixture: rest of the message trimmed ]

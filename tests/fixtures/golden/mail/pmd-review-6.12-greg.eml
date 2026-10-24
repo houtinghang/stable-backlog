@@ -1,0 +1,18 @@
+From: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Subject: [PATCH 6.12 593/869] mm/huge_memory: transfer the pmd dirty bit to the folio on zap
+Date: Sat, 17 Oct 2026 17:57:14 +0200
+Message-ID: <20261017160052.255916069@linuxfoundation.org>
+In-Reply-To: <20261017160036.979869304@linuxfoundation.org>
+References: <20261017160036.979869304@linuxfoundation.org>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+6.12-stable review patch.  If anyone has any objections, please let me know.
+
+------------------
+
+From: Usama Arif <usama.arif@linux.dev>
+
+[ Upstream commit fe6cf984939d8e12cb33a99673c8d026c5135e68 ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]

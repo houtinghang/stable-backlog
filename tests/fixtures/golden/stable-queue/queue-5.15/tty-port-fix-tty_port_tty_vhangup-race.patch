@@ -1,0 +1,10 @@
+From 2e6ed6a5b14eaf2953d69919a83d1eccf6eb3522 Mon Sep 17 00:00:00 2001
+From: Sasha Levin <sashal@kernel.org>
+Date: Thu, 8 Oct 2026 22:16:49 +0800
+Subject: tty: port: fix tty_port_tty_vhangup() race
+
+From: Johan Hovold <johan@kernel.org>
+
+[ Upstream commit b48820de8c1a596c5b99775524dfce73c6576c5d ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]

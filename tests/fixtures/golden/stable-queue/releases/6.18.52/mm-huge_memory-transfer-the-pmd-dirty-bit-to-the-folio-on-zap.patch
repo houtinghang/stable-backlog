@@ -1,0 +1,13 @@
+From stable+bounces-321542-greg=kroah.com@vger.kernel.org Thu Sep 10 19:26:16 2026
+From: Sasha Levin <sashal@kernel.org>
+Date: Thu, 10 Sep 2026 13:01:11 -0400
+Subject: mm/huge_memory: transfer the pmd dirty bit to the folio on zap
+To: stable@vger.kernel.org
+Cc: Usama Arif <usama.arif@linux.dev>, "David Hildenbrand (Arm)" <david@kernel.org>, Kiryl Shutsemau <kas@kernel.org>, Hugh Dickins <hughd@google.com>, Lance Yang <lance.yang@linux.dev>, Zi Yan <ziy@nvidia.com>, "Lorenzo Stoakes (ARM)" <ljs@kernel.org>, Baolin Wang <baolin.wang@linux.alibaba.com>, Barry Song <baohua@kernel.org>, Dev Jain <dev.jain@arm.com>, Johannes Weiner <hannes@cmpxchg.org>, "Liam R. Howlett" <liam@infradead.org>, Nhat Pham <nphamcs@gmail.com>, Rik van Riel <riel@surriel.com>, Ryan Roberts <ryan.roberts@arm.com>, Shakeel Butt <shakeel.butt@linux.dev>, Andrew Morton <akpm@linux-foundation.org>, Sasha Levin <sashal@kernel.org>
+Message-ID: <20260910170111.1335164-1-sashal@kernel.org>
+
+From: Usama Arif <usama.arif@linux.dev>
+
+[ Upstream commit fe6cf984939d8e12cb33a99673c8d026c5135e68 ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]

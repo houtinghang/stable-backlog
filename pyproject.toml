@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stable-backlog"
+version = "0.0.1.dev0"
+description = "List Linux stable FAILED backport requests with no backport found yet, and where each one stands."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Ting-Han Hou" }]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+# Runtime: standard library only (plus the system `git`).
+dependencies = []
+
+[project.urls]
+Source = "https://github.com/houtinghang/stable-backlog"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stable_backlog"]
+
+[tool.hatch.build.targets.sdist]
+# Explicit allow-list so private, untracked files can never be packaged.
+only-include = [
+    "src/stable_backlog",
+    "tests",
+    "docs/DESIGN.md",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = ["--strict-markers", "-m", "not slow and not mirror"]
+markers = [
+    "slow: long-running tests (not run by default)",
+    "mirror: needs a real local lore / stable-queue mirror (not run by default)",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 99  # PEP 8 allows up to 99 by team agreement; the parser has long regexes
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "SIM", "C4", "RUF", "PT",
+    "S",    # flake8-bandit: static security checks
+    "BLE",  # no blind `except Exception`
+    "T20",  # no stray print(); stdout output goes through the CLI only
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]           # assert is how pytest works
+"tests/mailfactory.py" = ["E501"]  # verbatim copy of a long line from real FAILED mails
+"scripts/**" = ["T20", "S603", "S607"]  # one-off developer scripts print and run git
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+mypy_path = "src"
+files = ["src", "tests"]

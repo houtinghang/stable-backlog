@@ -1,0 +1,15 @@
+From: Ting-Han Hou <ue081723@gmail.com>
+Subject: [PATCH 5.15.y 1/2] tty: introduce and use tty_port_tty_vhangup() helper
+Date: Thu,  8 Oct 2026 22:16:48 +0800
+Message-ID: <20261008141649.1183309-1-ue081723@gmail.com>
+In-Reply-To: <2026100552-dumpster-splashed-bbd3@gregkh>
+References: <2026100552-dumpster-splashed-bbd3@gregkh>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+From: "Jiri Slaby (SUSE)" <jirislaby@kernel.org>
+
+[ Upstream commit 2b5eac0f8c6e79bc152c8804f9f88d16717013ab ]
+
+[ stable-backlog test fixture: rest of the message trimmed ]
