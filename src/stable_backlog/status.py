@@ -30,6 +30,10 @@ from stable_backlog.model import (
 from stable_backlog.parse import normalize_title
 from stable_backlog.queue import QueueScan
 
+# Hashes in backports and stable-queue have at least 12 hex digits (parse.py)
+# and match as prefixes, so the first 12 are a safe lookup key.
+HASH_KEY = 12
+
 
 @dataclass(frozen=True)
 class BackportMatch:
@@ -68,15 +72,42 @@ def _children(envelopes: Iterable[Envelope]) -> dict[str, set[str]]:
     return out
 
 
-def _matches(upstream: str, title: str, candidates: Iterable[BackportPost]) -> list[BackportMatch]:
-    found = []
+@dataclass(frozen=True)
+class _Backports:
+    """The backports of one tree, looked up by hash key or by title."""
+
+    by_key: dict[str, list[tuple[int, BackportPost]]]  # (position, post) by HASH_KEY digits
+    by_title: dict[str, list[tuple[int, BackportPost]]]  # posts naming no commit at all
+
+
+def _index_backports(posts: Iterable[BackportPost]) -> dict[str, _Backports]:
+    out: dict[str, _Backports] = {}
+    for i, post in enumerate(posts):
+        for tree in post.trees:
+            index = out.setdefault(tree, _Backports(defaultdict(list), defaultdict(list)))
+            if post.upstreams:
+                for key in {h[:HASH_KEY] for h in post.upstreams}:
+                    index.by_key[key].append((i, post))
+            else:
+                index.by_title[normalize_title(post.title)].append((i, post))
+    return out
+
+
+def _matches(upstream: str, title: str, index: _Backports | None) -> list[BackportMatch]:
+    if index is None:
+        return []
+    found = [
+        (i, BackportMatch(post, Confidence.HASH))
+        for i, post in index.by_key.get(upstream[:HASH_KEY], ())
+        if any(upstream.startswith(h) for h in post.upstreams)
+    ]
     want = normalize_title(title)
-    for post in candidates:
-        if any(upstream.startswith(h) for h in post.upstreams):
-            found.append(BackportMatch(post, Confidence.HASH))
-        elif not post.upstreams and want and normalize_title(post.title) == want:
-            found.append(BackportMatch(post, Confidence.TITLE))
-    return sorted(found, key=lambda m: (m.post.envelope.message_id or "", m.post.title))
+    if want:
+        found += [(i, BackportMatch(p, Confidence.TITLE)) for i, p in index.by_title.get(want, ())]
+    # Same order as reading the archive, then by Message-ID and title.
+    found.sort(key=lambda f: f[0])
+    matches = [m for _, m in found]
+    return sorted(matches, key=lambda m: (m.post.envelope.message_id or "", m.post.title))
 
 
 def compute(collected: Collected, scan: QueueScan) -> tuple[ItemState, ...]:
@@ -84,14 +115,12 @@ def compute(collected: Collected, scan: QueueScan) -> tuple[ItemState, ...]:
     for req in collected.failed:
         groups[(req.upstream, req.tree)].append(req)
 
-    by_tree: dict[str, list[BackportPost]] = defaultdict(list)
-    for post in collected.backports:
-        for tree in post.trees:
-            by_tree[tree].append(post)
+    backports = _index_backports(collected.backports)
 
-    queue_by_tree: dict[str, list[QueueEntry]] = defaultdict(list)
+    # Queue entries name 12..40 hex digits: index them by the first HASH_KEY.
+    queue_by_key: dict[tuple[str, str], list[QueueEntry]] = defaultdict(list)
     for entry in scan.entries:
-        queue_by_tree[entry.tree].append(entry)
+        queue_by_key[(entry.tree, entry.upstream[:HASH_KEY])].append(entry)
 
     children = _children(
         [p.envelope for p in collected.backports]
@@ -102,8 +131,12 @@ def compute(collected: Collected, scan: QueueScan) -> tuple[ItemState, ...]:
     states = []
     for (upstream, tree), reqs in sorted(groups.items()):
         reqs.sort(key=lambda r: r.envelope.message_id or "")
-        matches = _matches(upstream, reqs[0].title, by_tree.get(tree, ()))
-        queue = tuple(e for e in queue_by_tree.get(tree, ()) if upstream.startswith(e.upstream))
+        matches = _matches(upstream, reqs[0].title, backports.get(tree))
+        queue = tuple(
+            e
+            for e in queue_by_key.get((tree, upstream[:HASH_KEY]), ())
+            if upstream.startswith(e.upstream)
+        )
         released = sorted((e.release for e in queue if e.release), key=_version_key)
         matched_ids = {m.post.envelope.message_id for m in matches}
         replies = sorted(

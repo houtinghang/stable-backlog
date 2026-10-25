@@ -3,10 +3,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import time
 from pathlib import Path
 
 from stable_backlog import mirror, queue, status
-from stable_backlog.model import Confidence, Status
+from stable_backlog.model import (
+    BackportPost,
+    Confidence,
+    Envelope,
+    FailedRequest,
+    QueueEntry,
+    Status,
+)
 from tests.conftest import InboxFactory, QueueFactory
 from tests.mailfactory import build_mail, failed_mail
 
@@ -176,6 +185,63 @@ def test_queue_and_release_precedence(
     assert six.status is Status.RELEASED
     assert six.release == "6.6.160"
     assert {e.location for e in six.queue} == {"staging", "release"}
+
+
+def test_hash_sharing_only_the_first_12_digits_does_not_match(
+    tmp_path: Path, make_inbox: InboxFactory, make_queue: QueueFactory
+) -> None:
+    upstream = "abcdef123456" + "1" * 28
+    near = "abcdef123456" + "9999"
+    mails = [failed_mail(upstream, "6.1", "f1@gregkh", TITLE), backport("6.1", near, "b1@x")]
+    files = {"queue-6.1/a.patch": patch_file(near)}
+    s = run(tmp_path, make_inbox, make_queue, mails, files)[(upstream, "6.1")]
+    assert s.status is Status.FAILED
+    assert (s.backports, s.queue) == ((), ())
+
+
+def test_backport_naming_the_commit_twice_matches_once(
+    tmp_path: Path, make_inbox: InboxFactory, make_queue: QueueFactory
+) -> None:
+    body = f"[ Upstream commit {H1} ]\n\ncommit {H1[:12]} upstream.\n"
+    mails = [
+        failed_mail(H1, "6.1", "f1@gregkh", TITLE),
+        build_mail(f"[PATCH 6.1.y] {TITLE}", body, message_id="<b1@x>"),
+    ]
+    s = run(tmp_path, make_inbox, make_queue, mails)[(H1, "6.1")]
+    assert [m.post.envelope.message_id for m in s.backports] == ["b1@x"]
+
+
+def _hash(n: int) -> str:
+    return hashlib.sha1(str(n).encode(), usedforsecurity=False).hexdigest()
+
+
+def test_compute_scales_to_a_full_archive() -> None:
+    # The size of the real data (2026-10: 3,604 FAILED reports and 8,190
+    # backports in 90 days of the list, 201,662 stable-queue patches): each
+    # request must not scan every backport and queue entry of its tree.
+    trees = ("5.10", "5.15", "6.1", "6.6", "6.12", "6.18", "7.1", "7.2")
+    env = Envelope(None, "s", "a@example.org", None, None, ())
+    failed = tuple(
+        FailedRequest(env, _hash(i), trees[i % 8], f"t{i}", "", "", ()) for i in range(3600)
+    )
+    backports = tuple(
+        BackportPost(env, (trees[i % 8],), (_hash(i if i % 3 == 0 else -i)[:12],), f"t{i}")
+        for i in range(8200)
+    )
+    queue_entries = tuple(
+        QueueEntry(_hash(i if i % 5 == 0 else -i), trees[i % 8], "release", "d", "p", "1.2.3")
+        for i in range(200_000)
+    )
+    collected = mirror.Collected("0" * 40, 0, failed, backports, (), (), ())
+    scan = queue.QueueScan("0" * 40, queue_entries, 0, 0, 0)
+    start = time.monotonic()
+    states = status.compute(collected, scan)
+    assert time.monotonic() - start < 2.0
+    by_status = {st: sum(1 for s in states if s.status is st) for st in Status}
+    # i % 5 == 0: released; else i % 3 == 0: backport posted; else no backport
+    assert by_status[Status.RELEASED] == 720
+    assert by_status[Status.BACKPORT_POSTED] == 960
+    assert by_status[Status.FAILED] == 1920
 
 
 def test_release_of_another_tree_does_not_count(
