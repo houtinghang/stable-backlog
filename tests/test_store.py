@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -16,7 +18,7 @@ from tests.mailfactory import build_mail, failed_mail
 def test_everything_round_trips(make_inbox: InboxFactory, tmp_path: Path) -> None:
     spam = build_mail("[PATCH 6.1.y] spam", "x\n", message_id="<spam@x>")
     mails = [
-        failed_mail(),
+        failed_mail(files=["drivers/a.c", "include/a.h"]),
         failed_mail(body="broken\n", message_id="broken@gregkh"),
         build_mail("[PATCH 6.6.y] x", "[ Upstream commit 1234567890ab ]\n", message_id=None),
         build_mail("Re: x", "hi\n", in_reply_to="<a@b>", references="<a@b> <c@d>"),
@@ -41,6 +43,18 @@ def test_saving_replaces_the_snapshot(make_inbox: InboxFactory, tmp_path: Path) 
         store.save_collected(conn, second)
     with store.open_store(db) as conn:
         assert store.load_collected(conn) == second
+
+
+def test_store_from_an_older_version_is_refused_with_a_hint(tmp_path: Path) -> None:
+    db = tmp_path / "s.sqlite3"
+    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO meta VALUES ('schema_version', '1')")
+    with (
+        pytest.raises(store.StoreError, match=r"schema version 1.*stable-backlog sync"),
+        store.open_store(db),
+    ):
+        pass
 
 
 def test_empty_store_fails_loudly(tmp_path: Path) -> None:

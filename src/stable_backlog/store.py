@@ -28,7 +28,7 @@ from stable_backlog.model import (
 )
 from stable_backlog.queue import QueueScan
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 # All SQL is fixed text; values only ever go in through ? parameters.
 _SCHEMA = """
@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS failed (
     seq INTEGER PRIMARY KEY,
     message_id TEXT, subject TEXT, sender TEXT, date TEXT, in_reply_to TEXT, refs TEXT,
-    upstream TEXT NOT NULL, tree TEXT NOT NULL, title TEXT NOT NULL);
+    upstream TEXT NOT NULL, tree TEXT NOT NULL, title TEXT NOT NULL,
+    author_name TEXT NOT NULL, author_email TEXT NOT NULL, files TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS backport (
     seq INTEGER PRIMARY KEY,
     message_id TEXT, subject TEXT, sender TEXT, date TEXT, in_reply_to TEXT, refs TEXT,
@@ -66,7 +67,8 @@ _DELETE_MESSAGES = (
 )
 _INSERT_FAILED = (
     "INSERT INTO failed (seq, message_id, subject, sender, date, in_reply_to, refs,"
-    " upstream, tree, title) VALUES (?,?,?,?,?,?,?,?,?,?)"
+    " upstream, tree, title, author_name, author_email, files)"
+    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
 _INSERT_BACKPORT = (
     "INSERT INTO backport (seq, message_id, subject, sender, date, in_reply_to, refs,"
@@ -81,8 +83,8 @@ _INSERT_OTHER = (
     " note) VALUES (?,?,?,?,?,?,?,?)"
 )
 _SELECT_FAILED = (
-    "SELECT message_id, subject, sender, date, in_reply_to, refs, upstream, tree, title"
-    " FROM failed ORDER BY seq"
+    "SELECT message_id, subject, sender, date, in_reply_to, refs, upstream, tree, title,"
+    " author_name, author_email, files FROM failed ORDER BY seq"
 )
 _SELECT_BACKPORT = (
     "SELECT message_id, subject, sender, date, in_reply_to, refs, trees, upstreams, title"
@@ -143,7 +145,10 @@ def open_store(path: Path) -> Iterator[sqlite3.Connection]:
         conn.executescript(_SCHEMA)
         version = _meta(conn).get("schema_version")
         if version not in (None, SCHEMA_VERSION):
-            raise StoreError(f"{path}: schema version {version}, expected {SCHEMA_VERSION}")
+            raise StoreError(
+                f"{path}: schema version {version}, expected {SCHEMA_VERSION}; rebuild it with"
+                " `stable-backlog sync` (--offline is enough)"
+            )
         conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
             ("schema_version", SCHEMA_VERSION),
@@ -190,7 +195,16 @@ def save_collected(conn: sqlite3.Connection, collected: Collected) -> None:
     conn.executemany(
         _INSERT_FAILED,
         [
-            (i, *_env_row(r.envelope), r.upstream, r.tree, r.title)
+            (
+                i,
+                *_env_row(r.envelope),
+                r.upstream,
+                r.tree,
+                r.title,
+                r.author_name,
+                r.author_email,
+                json.dumps(list(r.files)),
+            )
             for i, r in enumerate(collected.failed)
         ],
     )
@@ -232,7 +246,8 @@ def load_collected(conn: sqlite3.Connection) -> Collected:
     if "mirror_rev" not in meta:
         raise StoreError("no mirror data in the store (run sync first)")
     failed = tuple(
-        FailedRequest(_env(r[:6]), r[6], r[7], r[8]) for r in conn.execute(_SELECT_FAILED)
+        FailedRequest(_env(r[:6]), r[6], r[7], r[8], r[9], r[10], _list(r[11]))
+        for r in conn.execute(_SELECT_FAILED)
     )
     backports = tuple(
         BackportPost(_env(r[:6]), _list(r[6]), _list(r[7]), r[8])

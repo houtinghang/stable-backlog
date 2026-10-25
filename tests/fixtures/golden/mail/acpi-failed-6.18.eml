@@ -37,4 +37,5 @@ Date: Fri, 7 Aug 2026 12:22:37 +0200
 Subject: [PATCH] ACPI: scan: Avoid registering platform devices with resource
  overlaps
 
-[ stable-backlog test fixture: rest of the message trimmed ]
+[ stable-backlog test fixture: rest of the message trimmed except diff --git ]
+diff --git a/drivers/acpi/acpi_platform.c b/drivers/acpi/acpi_platform.c

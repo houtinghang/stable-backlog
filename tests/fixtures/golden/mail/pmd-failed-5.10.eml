@@ -37,4 +37,5 @@ Date: Wed, 19 Aug 2026 03:12:22 -0700
 Subject: [PATCH] mm/huge_memory: transfer the pmd dirty bit to the folio on
  zap
 
-[ stable-backlog test fixture: rest of the message trimmed ]
+[ stable-backlog test fixture: rest of the message trimmed except diff --git ]
+diff --git a/mm/huge_memory.c b/mm/huge_memory.c

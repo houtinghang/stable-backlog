@@ -49,6 +49,10 @@ class FailedRequest:
     upstream: str  # 40-hex upstream commit from the cherry-pick line
     tree: str  # "6.1"
     title: str  # title of the upstream commit
+    # From the original commit quoted in the report ("" / () if not found):
+    author_name: str  # decoded display name, may be ""
+    author_email: str  # address as written
+    files: tuple[str, ...]  # paths from its `diff --git` lines, in order
 
 
 @dataclass(frozen=True)

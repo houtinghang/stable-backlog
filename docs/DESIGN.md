@@ -121,6 +121,13 @@ Message-ID and reason instead of dropping it.
 
 The full commit title is taken from the `Subject:` of the original commit
 quoted in the FAILED body, because the mail subject is cut for long titles.
+The same quote (`git format-patch` output, after the "original commit in
+Linus's tree" separator line; nothing above it counts) gives the commit's
+author, from its `From:` header (folded and RFC 2047 encoded forms occur),
+and the changed files, from its `diff --git a/<path> b/<path>` lines (both
+names of a rename). In 2026-10 all 3,604 FAILED reports in the archive had
+both. Paths that git would quote (spaces, non-ASCII) are not read; the
+kernel has none.
 
 ### Upstream markers
 
@@ -203,7 +210,9 @@ every message, header and patch file is treated as written by an attacker.
 `store.py` keeps one snapshot in SQLite: the parsed FAILED reports, backports,
 review mails, other messages (for threading), skipped messages, removed
 Message-IDs and stable-queue entries, plus the mirror and stable-queue commits
-they came from. Saving replaces the previous snapshot.
+they came from. Saving replaces the previous snapshot. The snapshot records
+its schema version; one written by another version is refused with a hint
+to rebuild it with `stable-backlog sync` (`--offline` is enough).
 
 ## 9. Modules
 

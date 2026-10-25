@@ -25,6 +25,26 @@ UPSTREAM = {
     "damon": "90179da203ba8b708c84a12a07cd44be0f346334",
 }
 TREES = ("5.10", "5.15", "6.1", "6.6", "6.12", "6.18")
+# case -> author and files of the original commit quoted in its FAILED reports
+ORIGINAL = {
+    "gso": (
+        "Zihan Xi",
+        "zihanx@nebusec.ai",
+        ("include/net/gso.h", "net/core/gso.c", "net/ipv4/af_inet.c", "net/ipv6/ip6_offload.c"),
+    ),
+    "pmd": ("Usama Arif", "usama.arif@linux.dev", ("mm/huge_memory.c",)),
+    "acpi": (
+        "Rafael J. Wysocki",
+        "rafael.j.wysocki@intel.com",
+        ("drivers/acpi/acpi_platform.c",),
+    ),
+    "tty": (
+        "Johan Hovold",
+        "johan@kernel.org",
+        ("drivers/tty/tty_port.c", "include/linux/tty_port.h"),
+    ),
+    "damon": ("Liew Rui Yan", "aethernet65535@gmail.com", ("mm/damon/core.c",)),
+}
 
 # (case, tree, status, release or queue directory, fixtures of matched backports)
 EXPECTED: list[tuple[str, str, Status, str | None, list[str]]] = [
@@ -121,6 +141,18 @@ def test_golden_state(
     else:
         assert s.queue == ()
     assert [f.envelope.message_id for f in s.failed] == [ids[f"{case}-failed-{tree}"]]
+
+
+def test_author_and_files_of_every_request(
+    golden_states: tuple[
+        mirror.Collected, queue.QueueScan, dict[tuple[str, str], status.ItemState]
+    ],
+) -> None:
+    by_upstream = {v: k for k, v in UPSTREAM.items()}
+    collected = golden_states[0]
+    for req in collected.failed:
+        case = by_upstream[req.upstream]
+        assert (req.author_name, req.author_email, req.files) == ORIGINAL[case], req.tree
 
 
 def test_thread_replies_are_kept(

@@ -114,6 +114,9 @@ UPSTREAM_RE = re.compile(
     rb"|\(cherry picked from commit [0-9a-f]{40}\))",
 )
 TRIM_NOTE = b"[ stable-backlog test fixture: rest of the message trimmed ]\n"
+FAILED_TRIM_NOTE = (
+    b"[ stable-backlog test fixture: rest of the message trimmed except diff --git ]"
+)
 SHORT_BODY_LINES = 40
 
 
@@ -151,16 +154,18 @@ def keep_headers(lines: list[bytes]) -> list[bytes]:
 
 
 def trim_failed(body: list[bytes]) -> list[bytes]:
-    """Keep everything up to the original commit's Subject (with folding)."""
+    """Keep everything up to the original commit's Subject (with folding),
+    then only the `diff --git` lines of its patch (the changed files)."""
     out: list[bytes] = []
     in_orig = False
     in_subject = False
-    for line in body:
+    for i, line in enumerate(body):
         if in_subject:
             if line[:1] in (b" ", b"\t"):
                 out.append(line)
                 continue
-            return [*out, b"", TRIM_NOTE.rstrip(b"\n")]
+            diffs = [d for d in body[i:] if d.startswith(b"diff --git ")]
+            return [*out, b"", FAILED_TRIM_NOTE, *diffs]
         out.append(line)
         if line.startswith(b"------------------ original commit"):
             in_orig = True

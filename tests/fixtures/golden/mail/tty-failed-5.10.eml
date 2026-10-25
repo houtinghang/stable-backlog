@@ -36,4 +36,6 @@ From: Johan Hovold <johan@kernel.org>
 Date: Thu, 10 Sep 2026 14:51:14 +0200
 Subject: [PATCH] tty: port: fix tty_port_tty_vhangup() race
 
-[ stable-backlog test fixture: rest of the message trimmed ]
+[ stable-backlog test fixture: rest of the message trimmed except diff --git ]
+diff --git a/drivers/tty/tty_port.c b/drivers/tty/tty_port.c
+diff --git a/include/linux/tty_port.h b/include/linux/tty_port.h

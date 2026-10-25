@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -41,8 +42,21 @@ def build_mail(
     return ("\n".join(lines) + "\n\n" + body).encode("utf-8")
 
 
-def failed_body(upstream: str, tree: str, message_id: str, title: str) -> str:
-    """A FAILED body in the format stable-queue's tooling sends (trimmed)."""
+def failed_body(
+    upstream: str,
+    tree: str,
+    message_id: str,
+    title: str,
+    *,
+    author: str = "Some Author <author@example.org>",
+    files: Sequence[str] = (),
+) -> str:
+    """A FAILED body in the format stable-queue's tooling sends (trimmed).
+
+    The quoted original commit gets `From: <author>` and one `diff --git`
+    line per file.
+    """
+    diffs = "".join(f"diff --git a/{f} b/{f}\n" for f in files)
     return f"""
 The patch below does not apply to the {tree}-stable tree.
 If someone wants it applied there, or to any other stable or longterm
@@ -69,11 +83,13 @@ greg k-h
 ------------------ original commit in Linus's tree ------------------
 
 From {upstream} Mon Sep 17 00:00:00 2001
-From: Some Author <author@example.org>
+From: {author}
 Date: Thu, 10 Sep 2026 14:51:14 +0200
 Subject: [PATCH] {title}
 
-"""
+The commit message.
+
+{diffs}"""
 
 
 def failed_mail(
@@ -85,11 +101,11 @@ def failed_mail(
     subject: str | None = None,
     body: str | None = None,
     sender: str = GREG,
+    author: str = "Some Author <author@example.org>",
+    files: Sequence[str] = (),
+    date: str = "Sat, 24 Oct 2026 12:00:00 +0000",
 ) -> bytes:
     subj = subject or f'FAILED: patch "[PATCH] {title}" failed to apply to {tree}-stable tree'
-    return build_mail(
-        subj,
-        body if body is not None else failed_body(upstream, tree, message_id, title),
-        sender=sender,
-        message_id=f"<{message_id}>",
-    )
+    if body is None:
+        body = failed_body(upstream, tree, message_id, title, author=author, files=files)
+    return build_mail(subj, body, sender=sender, message_id=f"<{message_id}>", date=date)

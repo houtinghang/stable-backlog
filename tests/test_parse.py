@@ -92,6 +92,102 @@ def test_failed_without_message_id_is_an_error() -> None:
         parse_message(raw)
 
 
+@pytest.mark.parametrize(
+    ("fixture", "name", "addr", "files"),
+    [
+        (
+            "tty-failed-6.6",
+            "Johan Hovold",
+            "johan@kernel.org",
+            ("drivers/tty/tty_port.c", "include/linux/tty_port.h"),
+        ),
+        (
+            "gso-failed-5.10",
+            "Zihan Xi",
+            "zihanx@nebusec.ai",
+            (
+                "include/net/gso.h",
+                "net/core/gso.c",
+                "net/ipv4/af_inet.c",
+                "net/ipv6/ip6_offload.c",
+            ),
+        ),
+        (
+            "acpi-failed-6.18",
+            "Rafael J. Wysocki",
+            "rafael.j.wysocki@intel.com",
+            ("drivers/acpi/acpi_platform.c",),
+        ),
+    ],
+    ids=["two-files", "four-files", "quoted-name"],
+)
+def test_failed_author_and_files_from_lore(
+    fixture: str, name: str, addr: str, files: tuple[str, ...]
+) -> None:
+    rec = parse_message(golden_mail(fixture))
+    assert isinstance(rec, FailedRequest)
+    assert (rec.author_name, rec.author_email) == (name, addr)
+    assert rec.files == files
+
+
+@pytest.mark.parametrize(
+    ("author", "name", "addr"),
+    [
+        ("Some Author <author@example.org>", "Some Author", "author@example.org"),
+        (
+            "=?UTF-8?q?Thomas=20Hellstr=C3=B6m?= <thomas.hellstrom@linux.intel.com>",
+            "Thomas Hellström",
+            "thomas.hellstrom@linux.intel.com",
+        ),
+        (
+            '"Cen Zhang (Microsoft Security FORGE Labs)"\n <cenzhang@linux.microsoft.com>',
+            "Cen Zhang (Microsoft Security FORGE Labs)",
+            "cenzhang@linux.microsoft.com",
+        ),
+        (
+            "=?UTF-8?q?Francisco=20Beltr=C3=A1n=20Millal=C3=A9n?=\n <fbeltranmillalen@gmail.com>",
+            "Francisco Beltrán Millalén",
+            "fbeltranmillalen@gmail.com",
+        ),
+        ("author@example.org", "", "author@example.org"),
+        ("Nobody", "", ""),
+    ],
+    ids=["plain", "encoded-word", "folded", "folded-encoded", "address-only", "no-address"],
+)
+def test_failed_author_variants(author: str, name: str, addr: str) -> None:
+    # Forms seen in the quoted original commit of real FAILED reports
+    # (2026-10: 3,510 plain, 73 encoded words, 21 folded).
+    rec = parse_message(failed_mail(author=author))
+    assert isinstance(rec, FailedRequest)
+    assert (rec.author_name, rec.author_email) == (name, addr)
+
+
+def test_failed_files_keep_both_names_of_a_rename_once() -> None:
+    body = failed_body(TTY, "6.6", "x@gregkh", "t", files=["a.c", "a.c"])
+    body += "diff --git a/old/b.c b/new/b.c\n"
+    rec = parse_message(failed_mail(body=body))
+    assert isinstance(rec, FailedRequest)
+    assert rec.files == ("a.c", "old/b.c", "new/b.c")
+
+
+def test_failed_author_and_files_only_come_from_the_original_commit() -> None:
+    # Lines above the separator are the report's own text, not the patch.
+    body = failed_body(TTY, "6.6", "x@gregkh", "t", files=["real.c"])
+    body = "From: Mallory <m@example.org>\ndiff --git a/fake.c b/fake.c\n" + body
+    rec = parse_message(failed_mail(body=body))
+    assert isinstance(rec, FailedRequest)
+    assert rec.author_email == "author@example.org"
+    assert rec.files == ("real.c",)
+
+
+def test_failed_without_original_commit_has_no_author_or_files() -> None:
+    body = failed_body(TTY, "6.6", "x@gregkh", "t", files=["a.c"])
+    body = body.replace("------------------ original commit", "------------------ commit")
+    rec = parse_message(failed_mail(body=body))
+    assert isinstance(rec, FailedRequest)
+    assert (rec.author_name, rec.author_email, rec.files) == ("", "", ())
+
+
 def test_failed_subject_from_unknown_sender_is_not_a_request() -> None:
     # Anyone can mail stable@; only the stable maintainers send FAILED reports.
     rec = parse_message(failed_mail(sender="Mallory <mallory@example.org>"))

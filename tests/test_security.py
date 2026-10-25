@@ -297,6 +297,25 @@ def test_weird_headers_do_not_crash(header: str) -> None:
     assert isinstance(rec, BackportPost | OtherMail | FailedRequest | ReviewMail)
 
 
+@pytest.mark.parametrize(
+    "author",
+    [
+        "A" * 200_000 + " <a@example.org>",
+        "=?utf-8?b?" + "QUFB" * 50_000 + "?= <a@example.org>",
+        "<" * 200_000,
+        "x\n" + " y\n" * 50_000 + " <a@example.org>",
+    ],
+    ids=["huge-name", "huge-encoded-word", "angle-flood", "endless-folding"],
+)
+def test_huge_author_in_failed_is_fast_and_bounded(author: str) -> None:
+    start = time.monotonic()
+    rec = parse_message(failed_mail(author=author))
+    assert time.monotonic() - start < 2.0
+    assert isinstance(rec, FailedRequest)
+    assert len(rec.author_name) <= 200
+    assert len(rec.author_email) <= 320
+
+
 def test_nul_and_binary_body_do_not_crash() -> None:
     raw = build_mail("[PATCH 6.1.y] x", "start\n") + b"\x00\xff\xfe" * 1000
     rec = parse_message(raw)

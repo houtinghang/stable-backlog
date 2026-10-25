@@ -36,4 +36,8 @@ From: Zihan Xi <zihanx@nebusec.ai>
 Date: Thu, 24 Sep 2026 05:15:21 +0000
 Subject: [PATCH] net: gso: limit recursive IP-in-IP segmentation
 
-[ stable-backlog test fixture: rest of the message trimmed ]
+[ stable-backlog test fixture: rest of the message trimmed except diff --git ]
+diff --git a/include/net/gso.h b/include/net/gso.h
+diff --git a/net/core/gso.c b/net/core/gso.c
+diff --git a/net/ipv4/af_inet.c b/net/ipv4/af_inet.c
+diff --git a/net/ipv6/ip6_offload.c b/net/ipv6/ip6_offload.c

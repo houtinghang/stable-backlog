@@ -36,4 +36,5 @@ From: Liew Rui Yan <aethernet65535@gmail.com>
 Date: Tue, 8 Sep 2026 06:54:11 -0700
 Subject: [PATCH] mm/damon/core: allow esz to be set to zero
 
-[ stable-backlog test fixture: rest of the message trimmed ]
+[ stable-backlog test fixture: rest of the message trimmed except diff --git ]
+diff --git a/mm/damon/core.c b/mm/damon/core.c

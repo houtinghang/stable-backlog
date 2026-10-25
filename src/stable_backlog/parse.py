@@ -12,6 +12,7 @@ from __future__ import annotations
 import email
 import email.errors
 import email.message
+import email.parser
 import email.policy
 import email.utils
 import re
@@ -47,6 +48,10 @@ ORIGINAL_SUBJECT_RE = re.compile(
     r"^Subject: (?:\[PATCH\] )?(?P<title>[^\n]{0,1000}(?:\n[ \t][^\n]{0,1000}){0,5})", re.M
 )
 ORIGINAL_HEADER_WINDOW = 4000  # chars after the separator that hold the commit header
+# Paths git would quote (spaces, non-ASCII) do not match; the kernel has none.
+ORIGINAL_DIFF_RE = re.compile(r"^diff --git a/(?P<a>\S{1,500}) b/(?P<b>\S{1,500})[ \t]*$", re.M)
+MAX_AUTHOR_NAME_CHARS = 200
+MAX_ADDRESS_CHARS = 320
 
 PATCH_SUBJECT_RE = re.compile(r"\[PATCH (?P<inner>[^\]]{1,120})\][ \t]*(?P<title>.*)")
 TREE_TOKEN_RE = re.compile(r"(?<![\w.])(?P<tree>\d{1,2}\.\d{1,3})(?:\.y)?(?![\w.])")
@@ -168,7 +173,7 @@ def _ids(value: str) -> tuple[str, ...]:
 
 def _sender(value: str) -> str:
     _name, addr = email.utils.parseaddr(value)
-    return addr.strip().lower()[:320]
+    return addr.strip().lower()[:MAX_ADDRESS_CHARS]
 
 
 def _date(value: str) -> datetime | None:
@@ -249,7 +254,45 @@ def _failed(msg: email.message.EmailMessage, env: Envelope) -> FailedRequest:
     prefix = SUBJECT_PREFIX_RE.search(body)
     if prefix is not None and prefix.group("tree") != tree:
         raise ParseError(f"tree {tree} in subject but {prefix.group('tree')} in body", mid)
-    return FailedRequest(env, picks[0], tree, _failed_title(body, m.group("title")))
+    name, addr, files = _original_commit(body)
+    return FailedRequest(
+        env, picks[0], tree, _failed_title(body, m.group("title")), name, addr, files
+    )
+
+
+def _original_commit(body: str) -> tuple[str, str, tuple[str, ...]]:
+    """Author and changed files of the original commit quoted in a FAILED body.
+
+    The quote is `git format-patch` output: a header block (the author is its
+    From:, possibly folded or RFC 2047 encoded), the message, then the diff.
+    Only text after the separator counts. ("", "", ()) if there is no quote.
+    """
+    start = body.find(ORIGINAL_COMMIT_SEPARATOR)
+    if start < 0:
+        return "", "", ()
+    start += len(ORIGINAL_COMMIT_SEPARATOR)
+    block = body[start : start + ORIGINAL_HEADER_WINDOW].lstrip("\n")
+    block = block.partition("\n\n")[0]
+    try:
+        quoted = email.parser.HeaderParser(policy=_POLICY).parsestr(block)
+    except _EMAIL_ERRORS:
+        # The request itself is fine and must stay tracked; without an author
+        # it is reported as such (list --author on stderr, null in the JSON).
+        quoted = None
+    name, addr = _author(_header(quoted, "From")) if quoted is not None else ("", "")
+    files: list[str] = []
+    for m in ORIGINAL_DIFF_RE.finditer(body, start):
+        for path in m.group("a", "b"):
+            if path not in files:
+                files.append(path)
+    return name, addr, tuple(files)
+
+
+def _author(value: str) -> tuple[str, str]:
+    name, addr = email.utils.parseaddr(value)
+    if "@" not in addr:
+        return "", ""
+    return " ".join(name.split())[:MAX_AUTHOR_NAME_CHARS], addr.strip()[:MAX_ADDRESS_CHARS]
 
 
 def _failed_title(body: str, subject_title: str) -> str:
