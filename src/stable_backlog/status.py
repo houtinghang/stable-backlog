@@ -54,7 +54,7 @@ class ItemState:
     release: str | None  # first release that has it
 
 
-def _version_key(version: str) -> tuple[int, ...]:
+def version_key(version: str) -> tuple[int, ...]:
     return tuple(int(p) for p in version.split("."))
 
 
@@ -137,7 +137,7 @@ def compute(collected: Collected, scan: QueueScan) -> tuple[ItemState, ...]:
             for e in queue_by_key.get((tree, upstream[:HASH_KEY]), ())
             if upstream.startswith(e.upstream)
         )
-        released = sorted((e.release for e in queue if e.release), key=_version_key)
+        released = sorted((e.release for e in queue if e.release), key=version_key)
         matched_ids = {m.post.envelope.message_id for m in matches}
         replies = sorted(
             {c for r in reqs for c in children.get(r.envelope.message_id or "", ())}

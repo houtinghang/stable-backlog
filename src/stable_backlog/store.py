@@ -144,11 +144,8 @@ def open_store(path: Path) -> Iterator[sqlite3.Connection]:
     try:
         conn.executescript(_SCHEMA)
         version = _meta(conn).get("schema_version")
-        if version not in (None, SCHEMA_VERSION):
-            raise StoreError(
-                f"{path}: schema version {version}, expected {SCHEMA_VERSION}; rebuild it with"
-                " `stable-backlog sync` (--offline is enough)"
-            )
+        if version is not None:
+            _check_version(path, version)
         conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
             ("schema_version", SCHEMA_VERSION),
@@ -160,6 +157,32 @@ def open_store(path: Path) -> Iterator[sqlite3.Connection]:
         raise
     finally:
         conn.close()
+
+
+@contextmanager
+def open_snapshot(path: Path) -> Iterator[sqlite3.Connection]:
+    """Open a snapshot read-only: nothing is created or written, not even a
+    journal. sync replaces the file atomically, so it is always complete."""
+    if not path.is_file():
+        raise StoreError(f"no snapshot at {path}; run `stable-backlog sync` first")
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        try:
+            version = _meta(conn).get("schema_version")
+        except sqlite3.DatabaseError as e:
+            raise StoreError(f"{path}: not a stable-backlog snapshot ({e})") from e
+        _check_version(path, version)
+        yield conn
+    finally:
+        conn.close()
+
+
+def _check_version(path: Path, version: str | None) -> None:
+    if version != SCHEMA_VERSION:
+        raise StoreError(
+            f"{path}: schema version {version}, expected {SCHEMA_VERSION}; rebuild it with"
+            " `stable-backlog sync` (--offline is enough)"
+        )
 
 
 def _meta(conn: sqlite3.Connection) -> dict[str, str]:

@@ -14,9 +14,9 @@ FAILED --> BACKPORT_POSTED --> QUEUED --> RELEASED
 ```
 
 **Status: early development.** The data layer (parsing the archive and
-stable-queue, deriving the state of each request) and `stable-backlog sync`
-exist and are tested; listing the requests, the web page and a release are not
-done yet.
+stable-queue, deriving the state of each request), `stable-backlog sync`,
+`list` and `show` exist and are tested; the JSON export, the web page and a
+release are not done yet.
 
 ## Why
 
@@ -58,6 +58,8 @@ python3 -m venv ~/.venvs/stable-backlog
 ~/.venvs/stable-backlog/bin/stable-backlog sync
 ```
 
+### sync
+
 `sync` keeps bare mirrors of the lore stable archive and of stable-queue in
 `~/.cache/stable-backlog` (or `$XDG_CACHE_HOME/stable-backlog`) and rebuilds a
 local snapshot from them. The first run clones the last 90 days of the list
@@ -79,6 +81,63 @@ messages it skipped and why.
 | `--cache-dir DIR` | keep the mirrors and the snapshot in `DIR` |
 | `--offline` | rebuild the snapshot from the local mirrors without fetching |
 | `--reclone lore` / `--reclone queue` | clone a source again, for example after its history was rewritten |
+
+### list
+
+`stable-backlog list` reads the snapshot (no network) and prints one row per
+upstream commit that has a FAILED report with no backport found, the
+longest-waiting first:
+
+```
+AGE  UPSTREAM      TREES      REPLIES  TITLE
+80d  8bc4d7209611  6.1        -        btrfs: zoned: fix missing chunk metadata reservation
+80d  40de8160ca7f  6.6        1        fs/proc/task_mmu: fix PAGEMAP_SCAN written state for PMD holes
+80d  cdc36db204ff  5.10 5.15  -        Bluetooth: hci_sync: Fix advertising data UAFs
+```
+
+AGE counts the days from the first FAILED report to the newest message in the
+snapshot. REPLIES counts the other messages in the FAILED threads: a reply
+such as "not needed for this tree" is not a backport, so the request stays
+listed; read it with `show`. A summary goes to stderr: how many requests and
+commits matched, how current the data is (with a warning when it is old), and
+the messages that could not be read when the snapshot was built.
+
+| Option | |
+|---|---|
+| `--tree X.Y` | only this tree (repeatable) |
+| `--status S,...` / `--all` | `failed` (the default: no backport found), `backport-posted`, `queued`, `released` / every status |
+| `--since 30d` / `--since 2026-10-01` | first reported in the last 30 days / on or after that date (UTC) |
+| `--author TEXT` | the commit's author name or address contains `TEXT` (any case) |
+| `--path PATH` | the commit changes this file, or a file under this directory |
+| `--cache-dir DIR` | read the snapshot in `DIR` |
+
+A request that a filter cannot check, for example one whose author was not
+found, is left out, and the number of such requests is printed on stderr.
+
+### show
+
+`stable-backlog show <commit>` takes 12 to 40 hex digits of the upstream
+commit, or the Message-ID of one of its FAILED reports, and prints where it
+stands in each tree, with lore links:
+
+```
+92465f46f3c3a92e4758af20d2363b7adc43e1f5 net: expect instance lock in netdev_queue_get_dma_dev()
+Author: Jakub Kicinski <kuba@kernel.org>
+Files:  net/core/netdev_queues.c
+
+6.18  no backport found
+      FAILED    2026-08-17  https://lore.kernel.org/stable/2026081708-grout-zipping-a932@gregkh/
+7.1   released in 7.1.10
+      FAILED    2026-08-17  https://lore.kernel.org/stable/2026081708-gracious-yard-1b78@gregkh/
+      backport  2026-08-19  sashal@kernel.org  https://lore.kernel.org/stable/20260819230925.944372-2-sashal@kernel.org/
+      reply     https://lore.kernel.org/stable/20260819230925.944372-1-sashal@kernel.org/
+      release   releases/7.1.10/net-expect-instance-lock-in-netdev_queue_get_dma_dev.patch
+```
+
+A backport matched only by its title is marked "matched by title only". If
+no FAILED report is found, `show` exits with status 1 and says which dates the
+snapshot covers: a commit without a FAILED report there may still need a
+backport.
 
 ## Security
 

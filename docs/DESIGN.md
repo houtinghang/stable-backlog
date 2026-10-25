@@ -2,8 +2,8 @@
 
 This document describes how stable-backlog reads its data, how it decides the
 state of each FAILED request, and the rules that keep it safe to run on data
-anyone can write. It covers the data layer and keeping the mirrors up to date;
-the command line and the web page will be added later.
+anyone can write. It covers the data layer, keeping the mirrors up to date
+and the commands that read the snapshot; the web page will be added later.
 
 ## 1. Goal
 
@@ -202,7 +202,9 @@ every message, header and patch file is treated as written by an attacker.
 | Size and length limits before any regex (5 MB per message, 1000 characters per subject); no regex with nested unbounded repetition | `parse.py` | `test_security.py` huge lines |
 | SQLite only with `?` parameters; all SQL text is constant | `store.py` | `test_security.py` injection strings |
 | Strip escape sequences and control characters before printing to a terminal | `sanitize.py` | `test_security.py` |
-| HTML output (later): escape everything, link only to lore / git.kernel.org with URL-encoded Message-IDs, CSP `default-src 'none'`, no JavaScript | `report` (M2/M3) | |
+| Links go only to lore message pages; the Message-ID is percent-encoded, and an id without `@` gets no link | `report.py` | `test_report.py` hostile Message-IDs |
+| Commands that read the snapshot open it read-only and run neither git nor anything on the network | `store.py`, `cli.py` | `test_cli.py`, `test_store.py` |
+| HTML output (later): escape everything, link only to lore / git.kernel.org with URL-encoded Message-IDs, CSP `default-src 'none'`, no JavaScript | `report` (M3) | |
 | No third-party runtime dependencies; development tools pinned with hashes | `pyproject.toml`, `requirements-dev.txt` | |
 
 ## 8. Storage
@@ -214,7 +216,45 @@ they came from. Saving replaces the previous snapshot. The snapshot records
 its schema version; one written by another version is refused with a hint
 to rebuild it with `stable-backlog sync` (`--offline` is enough).
 
-## 9. Modules
+## 9. Commands that read the snapshot
+
+`list` and `show` only read `snapshot.sqlite`. It is opened read-only
+(`mode=ro`): nothing is written or created, git is not run and the network is
+not used. A missing snapshot, or one from another schema version, stops the
+command with a hint to run `sync`. Building the item states takes about 0.1
+seconds on 90 days of the list: backports and stable-queue entries are looked
+up by the first 12 digits of their hash, the shortest hash that is accepted.
+
+- **Ages** count the days from a request's first FAILED report to the newest
+  lore message in the snapshot, not to the current time, so the same
+  snapshot always gives the same list.
+- **list** prints one row per upstream commit, the longest-waiting first;
+  TREES lists the trees whose requests matched. The default is the requests
+  with no backport found (`--status failed`).
+- **Filters**: `--tree`, `--status`, `--since` (first FAILED report on or
+  after a date), `--author` (part of "name <address>", any case) and
+  `--path` (a file, or a directory as whole path components: `drivers/tty`
+  matches `drivers/tty/tty_port.c`, not `drivers/ttyx.c`). A request that a
+  filter cannot check (no date, no author, no files found) is left out and
+  counted on stderr.
+- **show** finds a commit by 12 to 40 hex digits (a prefix, compared in
+  memory and never passed to git) or by the Message-ID of a FAILED report.
+  An ambiguous prefix or no match exits with status 1; "no FAILED report"
+  comes with the dates the snapshot covers, since it does not mean that
+  nothing needs a backport.
+- **stderr** carries the data time (newest lore message, stable-queue
+  commit, when the snapshot was built and whether it was an offline
+  rebuild), the skipped messages with samples, and a warning when the newest
+  lore message is more than 2 days old or the stable-queue commit more than
+  7 days.
+- **Links** go only to `https://lore.kernel.org/stable/<Message-ID>/` and are
+  built in one place (`report.lore_url`). The Message-ID is percent-encoded
+  except for the RFC 3986 path characters that public-inbox itself leaves
+  as they are, so `/ ? # %` cannot lead off the message page. An id without
+  `@` (every RFC 5322 Message-ID has one) gets no link, because `.` or `..`
+  would be a dot segment.
+
+## 10. Modules
 
 | Module | Job |
 |---|---|
@@ -228,8 +268,10 @@ to rebuild it with `stable-backlog sync` (`--offline` is enough).
 | `sanitize.py` | make untrusted text safe for a terminal |
 | `cache.py` | the cache directory and the sync lock |
 | `sync.py` | update the mirrors and rebuild the snapshot |
+| `report.py` | select, group and label items for `list` and `show`; lore links |
+| `cli.py` | the `stable-backlog` command |
 
-## 10. Known limitations
+## 11. Known limitations
 
 - Every sync rebuilds the snapshot from all messages in the local mirror.
 - Reading all of `releases/` lists one directory per git process; on a full
@@ -238,6 +280,8 @@ to rebuild it with `stable-backlog sync` (`--offline` is enough).
   not pruned.
 - Replies such as "Queued for 6.1, thanks." are kept as replies but not used
   as a state; stable-queue is the source of truth for QUEUED.
+- "Replies" are all other messages threaded below a FAILED report, including
+  the other patches of a backport series (for example its prerequisites).
 - A patch dropped from the queue is not reported as "dropped" yet; it simply
   falls back to BACKPORT_POSTED. Showing the drop needs the stable-queue
   history.
