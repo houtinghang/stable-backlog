@@ -340,8 +340,8 @@ list the file is about 4.5 MB and takes under a second to write.
 ## 11. Known limitations
 
 - Every sync rebuilds the snapshot from all messages in the local mirror.
-- Reading all of `releases/` lists one directory per git process; on a full
-  stable-queue this takes about two minutes and will be made incremental.
+- Every sync also reads all stable-queue patches of the trees with FAILED
+  reports again (about 15 seconds in October 2026), not only the new ones.
 - The local lore mirror keeps growing (about 3 MB a day); old messages are
   not pruned.
 - Replies such as "Queued for 6.1, thanks." are kept as replies but not used
