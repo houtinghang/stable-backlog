@@ -58,6 +58,13 @@ python3 -m venv ~/.venvs/stable-backlog
 ~/.venvs/stable-backlog/bin/stable-backlog sync
 ```
 
+It also runs from the checkout without installing anything, since it needs
+nothing but the standard library:
+
+```bash
+PYTHONPATH=src python3 -m stable_backlog sync
+```
+
 ### sync
 
 `sync` keeps bare mirrors of the lore stable archive and of stable-queue in

@@ -12,8 +12,10 @@ import json
 import logging
 import os
 import re
+import runpy
 import sqlite3
 import stat
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -675,3 +677,29 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         cli.main(["--version"])
     assert exc.value.code == 0
     assert capsys.readouterr().out.strip() == f"stable-backlog {__version__}"
+
+
+@pytest.mark.parametrize(
+    ("argv", "code", "output"),
+    [
+        (["--version"], 0, f"stable-backlog {__version__}"),
+        (["list", "--cache-dir", "{tmp}/none"], 1, "stable-backlog: error: no snapshot at"),
+    ],
+    ids=["version", "exit-status"],
+)
+def test_runs_as_python_m_stable_backlog(
+    argv: list[str],
+    code: int,
+    output: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The daily workflow runs `python3 -m stable_backlog` from a checkout.
+    args = [a.replace("{tmp}", str(tmp_path)) for a in argv]
+    monkeypatch.setattr(sys, "argv", ["python3 -m stable_backlog", *args])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("stable_backlog", run_name="__main__", alter_sys=True)
+    assert exc.value.code == code
+    out, err = capsys.readouterr()
+    assert output in out + err
