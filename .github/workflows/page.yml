@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Once a day: update the mirrors, write the web page and the JSON, and
+# publish them on GitHub Pages. The job that reads the archive (written by
+# anyone) can only read; the job that deploys touches no data. If any step
+# fails, nothing is deployed and the previous page stays, with its date.
+# The rules are checked by tests/test_workflows.py; docs/DESIGN.md explains them.
+name: page
+on:
+  schedule:
+    - cron: "37 4 * * *"  # once a day, off the busy full hour
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: page
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # The mirrors from the last successful run: only new data is fetched.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/stable-backlog
+          key: mirrors-1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: mirrors-1-
+      - name: Update the mirrors and rebuild the snapshot
+        run: python3 -m stable_backlog sync --cache-dir "$HOME/.cache/stable-backlog"
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/stable-backlog
+          key: mirrors-1-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Write the page and the JSON
+        run: |
+          mkdir _site
+          python3 -m stable_backlog export --html -o _site/index.html --cache-dir "$HOME/.cache/stable-backlog"
+          python3 -m stable_backlog export --json -o _site/stable-backlog.json --cache-dir "$HOME/.cache/stable-backlog"
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1

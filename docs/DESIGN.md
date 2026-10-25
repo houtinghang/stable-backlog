@@ -366,7 +366,57 @@ built from data come from `report` only (`lore_url`, `commit_url`,
 written as ASCII, with other characters as `&#NNNN;`. On 90 days of the
 list it is about 370 KB.
 
-## 10. Modules
+## 10. Publishing the page
+
+A GitHub Actions workflow, `.github/workflows/page.yml`, publishes the page
+and the JSON on GitHub Pages once a day, and when it is started by hand:
+
+1. restore the mirrors of the last successful run from the Actions cache;
+2. `sync`: fetch what is new, with every check of section 2 (a stale or
+   rewritten source, or a new lore epoch, fails the run);
+3. save the mirrors in the cache, only after a successful sync;
+4. `export --html` and `export --json` into the site directory;
+5. deploy it to GitHub Pages.
+
+A failure in any step stops the run: nothing is deployed, the previous page
+stays with its date, and GitHub notifies the maintainer. The page says when
+it was built, and that a date more than two days old means the update is
+failing. The workflow runs from the checkout with the runner's `python3`
+(`PYTHONPATH=src python3 -m stable_backlog`), so nothing is installed.
+
+The cache keeps the use of lore and git.kernel.org as low as one user
+running `sync` once a day; without it, every run would clone about 550 MB.
+Each run saves a new entry. GitHub keeps up to 10 GB per repository, drops
+the least recently used entries first, and drops entries unused for 7 days.
+When no entry is left, the next run clones the last 90 days again, so the
+range of FAILED reports the page covers (shown on the page) can shrink.
+
+Security:
+
+- The job that reads the archive has a read-only token, which is not kept
+  on disk (`persist-credentials: false`). The job that deploys has
+  `pages: write` and `id-token: write`; it runs only GitHub's deploy action
+  and never sees the data.
+- Data moves only through files (cache directory, snapshot, site
+  directory). No workflow expression can put text from a message, an issue
+  or a pull request into a command.
+- Only runs on `main` started by `push`, `schedule` or `workflow_dispatch`
+  can write the cache this workflow restores; `pull_request` runs cannot.
+  The cache holds bare git repositories, whose configuration git follows,
+  so writing to it takes the same trust as changing `main`.
+- GitHub Pages serves all project pages of an account from one origin
+  (`<user>.github.io`); the page has no script and sets no cookies.
+
+GitHub turns off scheduled workflows in a public repository after 60 days
+without activity in it. The date on the page then stops moving; the
+workflow can be turned on again in the repository's Actions tab.
+
+`.github/workflows/ci.yml` runs the tests (including the slow ones), ruff
+and mypy on Python 3.10 and 3.14 for every push to `main` and every pull
+request, with a read-only token. Dependabot proposes updates of the pinned
+actions, for releases at least two weeks old.
+
+## 11. Modules
 
 | Module | Job |
 |---|---|
@@ -384,7 +434,7 @@ list it is about 370 KB.
 | `page.py` | the web page (`export --html`) |
 | `cli.py` | the `stable-backlog` command |
 
-## 11. Known limitations
+## 12. Known limitations
 
 - Every sync rebuilds the snapshot from all messages in the local mirror.
 - Every sync also reads all stable-queue patches of the trees with FAILED

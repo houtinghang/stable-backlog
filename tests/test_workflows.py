@@ -13,9 +13,12 @@ from pathlib import Path
 
 import pytest
 
+from stable_backlog import page
+
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
-EXPECTED = ["ci.yml"]
+EXPECTED = ["ci.yml", "page.yml"]
+CACHE_DIR = '--cache-dir "$HOME/.cache/stable-backlog"'
 # Only GitHub's own actions, each pinned to a full commit id with its version noted.
 USES_RE = re.compile(r"^\s*(?:- )?uses: (?P<ref>\S+)(?P<rest>.*)$", re.MULTILINE)
 PINNED_RE = re.compile(r"actions/[a-z-]+(?:/[a-z-]+)?@[0-9a-f]{40}")
@@ -162,6 +165,73 @@ def test_ci_runs_every_check_on_the_oldest_and_newest_python() -> None:
     ]
     assert re.search(r"^  push:\n    branches: \[main\]$", text, re.MULTILINE)
     assert re.search(r"^  pull_request:\n    branches: \[main\]$", text, re.MULTILINE)
+
+
+def permissions(block: str, indent: str) -> list[str]:
+    """The lines of the `permissions:` mapping at this indentation."""
+    lines = block.splitlines()
+    start = lines.index(f"{indent}permissions:")
+    out = []
+    for line in lines[start + 1 :]:
+        if not line.startswith(indent + "  "):
+            break
+        out.append(line.strip())
+    return out
+
+
+def test_page_runs_once_a_day_or_by_hand() -> None:
+    text = workflow("page.yml")
+    assert re.search(r'^    - cron: "37 4 \* \* \*"', text, re.MULTILINE)  # off the full hour
+    assert re.search(r"^  workflow_dispatch:$", text, re.MULTILINE)
+    assert re.search(r"^  group: page\n  cancel-in-progress: false$", text, re.MULTILINE)
+    assert "push:" not in text
+    assert "pull_request" not in text
+
+
+def test_page_only_the_deploy_job_may_write() -> None:
+    # The job that parses messages can only read; the one that deploys touches no data.
+    text = workflow("page.yml")
+    assert re.search(r"^permissions: \{\}$", text, re.MULTILINE)
+    job = jobs(text)
+    assert sorted(job) == ["build", "deploy"]
+    assert permissions(job["build"], "    ") == ["contents: read"]
+    assert permissions(job["deploy"], "    ") == ["pages: write", "id-token: write"]
+    assert WRITE_RE.findall(job["build"]) == []
+    assert len(WRITE_RE.findall(text)) == 2
+    assert "needs: build" in job["deploy"]
+    assert USES_RE.findall(job["deploy"])[0][0].startswith("actions/deploy-pages@")
+    assert len(USES_RE.findall(job["deploy"])) == 1
+    assert "run:" not in job["deploy"]
+
+
+def test_page_build_steps_in_order() -> None:
+    build = jobs(workflow("page.yml"))["build"]
+    order = [
+        "uses: actions/checkout@",
+        "uses: actions/cache/restore@",
+        f"run: python3 -m stable_backlog sync {CACHE_DIR}",
+        "uses: actions/cache/save@",  # only after a successful sync
+        f"python3 -m stable_backlog export --html -o _site/index.html {CACHE_DIR}",
+        f"python3 -m stable_backlog export --json -o _site/{page.JSON_NAME} {CACHE_DIR}",
+        "uses: actions/upload-pages-artifact@",
+    ]
+    positions = [build.find(step) for step in order]
+    assert -1 not in positions, [s for s, p in zip(order, positions, strict=True) if p == -1]
+    assert positions == sorted(positions)
+    assert "PYTHONPATH: src" in build
+    assert "if:" not in build  # every step runs only if the ones before it worked
+    assert "continue-on-error" not in build
+
+
+def test_page_cache_holds_only_the_mirrors() -> None:
+    text = workflow("page.yml")
+    for step in steps_using(text, "actions/cache/restore") + steps_using(
+        text, "actions/cache/save"
+    ):
+        assert "path: ~/.cache/stable-backlog\n" in step + "\n"
+        assert "key: mirrors-1-${{ github.run_id }}-${{ github.run_attempt }}" in step
+    (restore,) = steps_using(text, "actions/cache/restore")
+    assert "restore-keys: mirrors-1-" in restore
 
 
 def test_dependabot_updates_the_actions_after_a_cooldown() -> None:

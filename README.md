@@ -15,8 +15,9 @@ FAILED --> BACKPORT_POSTED --> QUEUED --> RELEASED
 
 **Status: early development.** The data layer (parsing the archive and
 stable-queue, deriving the state of each request), `stable-backlog sync`,
-`list`, `show` and `export` (JSON and the web page) exist and are tested;
-publishing the page every day and a release are not done yet.
+`list`, `show` and `export` (JSON and the web page) exist and are tested,
+and GitHub Actions publishes the web page once a day. There is no release
+yet.
 
 ## Why
 
@@ -31,8 +32,8 @@ some are not, and there is no list of the ones still open. Matthew Wilcox
 - It reads the public-inbox git mirror of the stable list
   (`https://lore.kernel.org/stable/git/<N>.git`) and stable-queue from
   git.kernel.org. It never scrapes web pages. After the first clone it fetches
-  only new data, and at most once an hour; the planned web page will be
-  updated once a day.
+  only new data, and at most once an hour; the web page is updated once a
+  day.
 - Requests and answers are matched by **upstream commit hash**: the FAILED
   report's `git cherry-pick -x <hash>` line against a backport's
   `[ Upstream commit <hash> ]`, `commit <hash> upstream.` or
@@ -46,6 +47,21 @@ some are not, and there is no list of the ones still open. Matthew Wilcox
   in the archive.
 
 Design details: [docs/DESIGN.md](docs/DESIGN.md).
+
+## Web page
+
+<https://houtinghang.github.io/stable-backlog/> lists the requests with no
+backport found, for all trees and for each tree, with links to the FAILED
+reports and replies on lore and to the upstream commits on git.kernel.org.
+[`stable-backlog.json`](https://houtinghang.github.io/stable-backlog/stable-backlog.json)
+next to it has every request in every status, in the format of
+`export --json`.
+
+A GitHub Actions workflow (`.github/workflows/page.yml`) rebuilds both once a
+day. It keeps its mirrors in the Actions cache, so only new data is fetched.
+If anything fails, for example a source cannot be reached or looks stale,
+nothing is published and the page keeps its old date: the page says when it
+was built. Its results have not been checked by hand yet.
 
 ## Usage
 
