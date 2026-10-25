@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Tests, lint and type checks on every push to main and every pull request.
+# Read-only token; actions pinned to commits; the rules are checked by
+# tests/test_workflows.py.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install the pinned development tools
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.txt
+      - run: python -m pytest
+      - run: python -m pytest -m slow
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy

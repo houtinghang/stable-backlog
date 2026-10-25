@@ -194,7 +194,10 @@ python3 -m venv ~/.venvs/stable-backlog
 
 The development tools are pinned with hashes in `requirements-dev.txt`
 (generated from `requirements-dev.in`; see the comment there). Tests never use
-the network. The golden tests use real stable list messages and stable-queue
+the network. GitHub Actions runs the same checks on Python 3.10 and 3.14 for
+every push and pull request (`.github/workflows/ci.yml`, with a read-only
+token); the rules the workflows must follow are tested in
+`tests/test_workflows.py`. The golden tests use real stable list messages and stable-queue
 files, trimmed to what the parser needs; where each one came from is listed in
 `tests/fixtures/golden/MANIFEST.tsv`, and
 `scripts/make_golden_fixtures.py` regenerates them from local mirrors.

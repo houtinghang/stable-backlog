@@ -222,7 +222,8 @@ every message, header and patch file is treated as written by an attacker.
 | Links go only to lore message pages; the Message-ID is percent-encoded, and an id without `@` gets no link | `report.py` | `test_report.py` hostile Message-IDs |
 | Commands that read the snapshot open it read-only and run neither git nor anything on the network | `store.py`, `cli.py` | `test_cli.py`, `test_store.py` |
 | The web page has no JavaScript; its Content-Security-Policy allows nothing but its own style (by hash); text from messages is escaped after control characters are removed, and titles and names are isolated with `<bdi>`; links built from data go only to lore and git.kernel.org; the page is ASCII | `page.py`, `report.py` | `test_page.py` hostile titles, names, Message-IDs and tree names |
-| No third-party runtime dependencies; development tools pinned with hashes | `pyproject.toml`, `requirements-dev.txt` | |
+| No third-party runtime dependencies; development tools pinned with hashes and installed from wheels only | `pyproject.toml`, `requirements-dev.txt`, `ci.yml` | `test_workflows.py` |
+| GitHub Actions: only GitHub's own actions, pinned to commit ids; no trigger that runs with others' input (`pull_request_target`, `workflow_run`, `issue_comment`); a read-only token, not kept on disk; no secrets; no expression that could carry data into a command; a time limit on every job | `.github/` | `test_workflows.py` |
 
 ## 8. Storage
 
