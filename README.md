@@ -64,7 +64,8 @@ python3 -m venv ~/.venvs/stable-backlog
 `~/.cache/stable-backlog` (or `$XDG_CACHE_HOME/stable-backlog`) and rebuilds a
 local snapshot from them. The first run clones the last 90 days of the list
 (about 240 MB) and the current stable-queue (about 310 MB); later runs fetch
-only what is new. A run takes a few minutes, most of it reading stable-queue.
+only what is new. Rebuilding the snapshot takes about a minute, most of it
+parsing the lore messages.
 
 To keep the load on lore and git.kernel.org low, `sync` uses the network at
 most once an hour: within an hour of the last successful run it stops with an
@@ -170,6 +171,7 @@ Linux (or WSL) with Python 3.10 or newer and `git`.
 python3 -m venv ~/.venvs/stable-backlog
 ~/.venvs/stable-backlog/bin/pip install --require-hashes -r requirements-dev.txt
 ~/.venvs/stable-backlog/bin/python -m pytest
+~/.venvs/stable-backlog/bin/python -m pytest -m slow  # real-scale performance tests
 ~/.venvs/stable-backlog/bin/ruff check .
 ~/.venvs/stable-backlog/bin/ruff format --check .
 ~/.venvs/stable-backlog/bin/mypy

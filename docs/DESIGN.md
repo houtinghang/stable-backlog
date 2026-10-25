@@ -152,7 +152,16 @@ Hashes of 12 to 40 hex digits are accepted and matched as prefixes. Hashes in
   patches that are later merged into `queue-X.Y`.
 - `releases/X.Y.Z/`: every patch counts; `X.Y.Z` is reported as the release.
 - Directory and file names must match fixed patterns; anything else is
-  ignored. Patches without a marker are counted (`without_marker`).
+  ignored. Patches without a marker are counted (`without_marker`). A
+  patch or `series` name that is not a file (a directory, a submodule) is an
+  error.
+
+The commit's tree is listed once (`git ls-tree -r`) and every file is read
+by its blob id through one `git cat-file --batch`. Asking for `rev:path`
+instead makes git search the `releases/` tree (4,378 entries in October
+2026) again for each file: 2 minutes for the 201,662 patches of eight trees,
+against 15 seconds by blob id. A blob shared by several files is read once,
+and only the upstream commits found in it are kept, not its content.
 
 ## 5. Matching
 
