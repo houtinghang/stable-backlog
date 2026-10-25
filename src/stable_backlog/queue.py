@@ -12,6 +12,11 @@ blob id. Asking git for `rev:path` instead makes it search the releases/
 tree (4,000+ entries) again for each of the 200,000 patches: two minutes
 instead of about fifteen seconds. A blob shared by several files is read
 once, and only the upstream commits found in it are kept.
+
+Only the first MAX_MESSAGE_BYTES of a patch are searched: the markers are
+at the top, and the limit bounds the work for a huge patch (the largest,
+6.9 MB in October 2026, is a big diff). A `series` file over the limit is
+an error rather than a partial list.
 """
 
 from __future__ import annotations
@@ -161,10 +166,14 @@ def _patches(repo: Path, rev: str, dirs: dict[str, list[_Entry]]) -> tuple[list[
         for e in entries
         if e.location != "release" and e.name == SERIES
     }
-    texts = {
-        blob: data if size <= MAX_MESSAGE_BYTES else b""
-        for blob, size, data in _read_blobs(repo, rev, {e.blob: e.path for e in series.values()})
-    }
+    paths = {e.blob: e.path for e in series.values()}
+    texts: dict[str, bytes] = {}
+    for blob, size, data in _read_blobs(repo, rev, paths):
+        if size > MAX_MESSAGE_BYTES:
+            raise gitio.GitError(
+                f"stable-queue {rev[:12]}: {paths[blob]!r} is too large ({size} bytes)"
+            )
+        texts[blob] = data
     patches: list[_Entry] = []
     not_in_series = 0
     for directory, entries in dirs.items():
@@ -190,8 +199,8 @@ def scan(repo: Path, rev: str, trees: Iterable[str]) -> QueueScan:
             raise ValueError(f"not a stable tree: {tree!r:.40}")
     patches, not_in_series = _patches(repo, rev, _listing(repo, rev, wanted))
     found = {
-        blob: _markers(data) if size <= MAX_MESSAGE_BYTES else ()
-        for blob, size, data in _read_blobs(repo, rev, {p.blob: p.path for p in patches})
+        blob: _markers(data)
+        for blob, _size, data in _read_blobs(repo, rev, {p.blob: p.path for p in patches})
     }
     entries: list[QueueEntry] = []
     without_marker = 0

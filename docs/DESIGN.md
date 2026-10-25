@@ -163,6 +163,12 @@ instead makes git search the `releases/` tree (4,378 entries in October
 against 15 seconds by blob id. A blob shared by several files is read once,
 and only the upstream commits found in it are kept, not its content.
 
+Only the first 5 MB of a patch are searched for markers, and the rest is read
+and thrown away: the markers are at the top, and the limit bounds the work
+for a huge patch (the largest, 6.9 MB in October 2026, is a big diff with its
+marker in the first lines). A `series` file over 5 MB is an error, not a
+partial list.
+
 ## 5. Matching
 
 For each (upstream, tree) with at least one FAILED report:
@@ -210,7 +216,7 @@ every message, header and patch file is treated as written by an attacker.
 | The network is used at most once an hour | `sync.py` | `test_sync.py` |
 | No network listener of any kind | whole package | |
 | File names never come from message content | whole package | `test_security.py` path-like Message-IDs |
-| Size and length limits before any regex (5 MB per message, 1000 characters per subject); no regex with nested unbounded repetition | `parse.py` | `test_security.py` huge lines |
+| Size and length limits before any regex (5 MB per message, the first 5 MB of a stable-queue patch, 1000 characters per subject); no regex with nested unbounded repetition | `parse.py`, `queue.py` | `test_security.py` huge lines, `test_queue.py` huge patch |
 | SQLite only with `?` parameters; all SQL text is constant | `store.py` | `test_security.py` injection strings |
 | Strip escape sequences and control characters before printing to a terminal | `sanitize.py` | `test_security.py` |
 | Links go only to lore message pages; the Message-ID is percent-encoded, and an id without `@` gets no link | `report.py` | `test_report.py` hostile Message-IDs |

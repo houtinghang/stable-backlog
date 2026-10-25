@@ -10,6 +10,7 @@ import pytest
 
 from stable_backlog import queue
 from stable_backlog.gitio import GitError
+from stable_backlog.parse import MAX_MESSAGE_BYTES
 from tests.conftest import QueueFactory, _git
 from tests.mailfactory import GOLDEN
 from tests.test_status import H1, H2, patch_file, write_queue
@@ -156,6 +157,24 @@ def test_missing_patch_object_fails_loudly(tmp_path: Path, make_queue: QueueFact
     blob = _git(repo, "rev-parse", f"{rev}:queue-6.1/a.patch")
     (repo / ".git" / "objects" / blob[:2] / blob[2:]).unlink()
     with pytest.raises(GitError, match=r"queue-6\.1/a\.patch"):
+        queue.scan(repo, rev, ("6.1",))
+
+
+def test_huge_patch_is_searched_from_its_start(tmp_path: Path, make_queue: QueueFactory) -> None:
+    # Like releases/6.1.36/smb-move-client-and-server-files-to-common-directory-fs-smb.patch
+    # (6.9 MB): the marker is at the top, the size is in the diff.
+    huge = patch_file(H1) + "diff --git a/f b/f\n" + "+x\n" * (MAX_MESSAGE_BYTES // 3 + 1)
+    repo, rev = make_queue(write_queue(tmp_path / "src", {"releases/6.1.36/a.patch": huge}))
+    scan = queue.scan(repo, rev, ("6.1",))
+    assert [e.upstream for e in scan.entries] == [H1]
+    assert scan.without_marker == 0
+
+
+def test_huge_series_file_fails_loudly(tmp_path: Path, make_queue: QueueFactory) -> None:
+    series = "a.patch\n" + "# padding\n" * (MAX_MESSAGE_BYTES // 10 + 1)
+    files = {"queue-6.1/series": series, "queue-6.1/a.patch": patch_file(H1)}
+    repo, rev = make_queue(write_queue(tmp_path / "src", files))
+    with pytest.raises(GitError, match=r"queue-6\.1/series.*too large"):
         queue.scan(repo, rev, ("6.1",))
 
 
