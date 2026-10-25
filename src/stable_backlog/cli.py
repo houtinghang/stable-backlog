@@ -21,7 +21,18 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from stable_backlog import __version__, cache, gitio, mirror, queue, report, status, store, sync
+from stable_backlog import (
+    __version__,
+    cache,
+    gitio,
+    mirror,
+    page,
+    queue,
+    report,
+    status,
+    store,
+    sync,
+)
 from stable_backlog.model import Status
 from stable_backlog.sanitize import for_terminal
 from stable_backlog.status import version_key
@@ -123,11 +134,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_cache_dir(p)
     p = commands.add_parser(
         "export",
-        help="write every request, in every status, as JSON (from the snapshot, no network)",
-        description="The JSON format is described in docs/DESIGN.md. Text from messages is"
-        " kept as it is, escaped as \\uXXXX: the output is printable ASCII only.",
+        help="write every request as JSON, or the web page as HTML (from the snapshot, no"
+        " network)",
+        description="--json writes every request, in every status; the format is described in"
+        " docs/DESIGN.md. --html writes the web page: the requests with no backport found, with"
+        " lore links. Either way the output is printable ASCII only.",
     )
-    p.add_argument("--json", action="store_true", required=True, help="write JSON")
+    fmt = p.add_mutually_exclusive_group(required=True)
+    fmt.add_argument("--json", action="store_true", help="write JSON")
+    fmt.add_argument("--html", action="store_true", help="write the web page (HTML)")
     p.add_argument(
         "-o",
         "--output",
@@ -320,23 +335,32 @@ def _show(args: argparse.Namespace, now: datetime) -> int:
 
 def _export(args: argparse.Namespace, now: datetime) -> int:
     snap = _load(args)
-    doc = report.export_document(
-        snap.collected,
-        snap.scan,
-        snap.info,
-        snap.states,
-        generated_at=now,
-        tool=f"{PROG} {__version__}",
-        lore_source=sync.LORE.url,
-        queue_source=sync.QUEUE.url,
-    )
-    text = report.export_json(doc)
+    tool = f"{PROG} {__version__}"
+    if args.html:
+        text = page.render(
+            snap.collected, snap.scan, snap.info, snap.states, generated_at=now, tool=tool
+        )
+        n = sum(1 for s in snap.states if s.status is Status.FAILED)
+        what = f"the page ({_count(n, 'request')} with no backport found)"
+    else:
+        doc = report.export_document(
+            snap.collected,
+            snap.scan,
+            snap.info,
+            snap.states,
+            generated_at=now,
+            tool=tool,
+            lore_source=sync.LORE.url,
+            queue_source=sync.QUEUE.url,
+        )
+        text = report.export_json(doc)
+        what = _count(len(snap.states), "item")
     lines: list[str] = []
     if args.output is None:
         sys.stdout.write(text)
     else:
         _write_replacing(args.output, text)
-        lines.append(f"wrote {_count(len(snap.states), 'item')} to {args.output}")
+        lines.append(f"wrote {what} to {args.output}")
     _note([*lines, *_snapshot_notes(snap, now)])
     return 0
 

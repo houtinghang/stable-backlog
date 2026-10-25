@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Unit tests for report: selecting, grouping and labelling items, lore links.
+"""Unit tests for report: selecting, grouping and labelling items, links.
 
 States are built from parsed records directly (no git), through
 status.compute, so the tests see the same items the commands do.
@@ -10,68 +10,19 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
-from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
 
 from stable_backlog import mirror, queue, report, status, store
-from stable_backlog.model import (
-    BackportPost,
-    Envelope,
-    FailedRequest,
-    Location,
-    OtherMail,
-    QueueEntry,
-    Status,
-)
+from stable_backlog.model import OtherMail, Status
+from tests.records import REF, backport, compute, entry, env, failed
 
 H1 = "1111111111111111111111111111111111111111"
 H2 = "2222222222222222222222222222222222222222"
 H3 = "2222222222223333333333333333333333333333"  # same first 12 digits as H2
-REF = datetime(2026, 10, 24, 18, 0, tzinfo=timezone.utc)  # newest lore message
 PREFIX = "https://lore.kernel.org/stable/"
-
-
-def env(mid: str | None, *, days_ago: float | None = 10, reply_to: str | None = None) -> Envelope:
-    date = None if days_ago is None else REF - timedelta(days=days_ago)
-    return Envelope(mid, "s", "someone@example.org", date, reply_to, ())
-
-
-def failed(
-    upstream: str,
-    tree: str,
-    mid: str,
-    *,
-    days_ago: float | None = 10,
-    title: str = "foo: fix the bar",
-    author: tuple[str, str] = ("Some Author", "author@example.org"),
-    files: Sequence[str] = ("drivers/foo/bar.c",),
-) -> FailedRequest:
-    return FailedRequest(env(mid, days_ago=days_ago), upstream, tree, title, *author, tuple(files))
-
-
-def backport(tree: str, upstream: str | None, mid: str, title: str = "x") -> BackportPost:
-    return BackportPost(env(mid), (tree,), (upstream,) if upstream else (), title)
-
-
-def compute(
-    failed_: Sequence[FailedRequest],
-    backports: Sequence[BackportPost] = (),
-    others: Sequence[OtherMail] = (),
-    entries: Sequence[QueueEntry] = (),
-) -> tuple[status.ItemState, ...]:
-    collected = mirror.Collected(
-        "0" * 40, 0, tuple(failed_), tuple(backports), (), tuple(others), ()
-    )
-    return status.compute(collected, queue.QueueScan("0" * 40, tuple(entries), 0, 0, 0))
-
-
-def entry(upstream: str, tree: str, directory: str) -> QueueEntry:
-    release = directory.removeprefix("releases/") if directory.startswith("releases/") else None
-    location: Location = "release" if release else "queue"
-    return QueueEntry(upstream, tree, location, directory, f"{directory}/a.patch", release)
 
 
 # --- lore links ------------------------------------------------------------------
@@ -137,6 +88,27 @@ def test_lore_url_stays_on_the_message_page(mid: str) -> None:
 def test_lore_url_needs_an_at_sign(mid: str) -> None:
     # RFC 5322 Message-IDs have one; without it a "." or ".." could climb up.
     assert report.lore_url(mid) is None
+
+
+def test_commit_links_go_to_git_kernel_org() -> None:
+    assert report.commit_url(H1) == (
+        f"https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id={H1}"
+    )
+    assert report.queue_commit_url(H2) == (
+        f"https://git.kernel.org/pub/scm/linux/kernel/git/stable/stable-queue.git/commit/?id={H2}"
+    )
+
+
+@pytest.mark.parametrize(
+    "commit",
+    [H1[:12], "AB" * 20, f"{H1}&x=1", f"{H1}#f", f"{H1[:39]}\n", "", "../" + H1[3:]],
+    ids=["short", "upper-case", "query", "fragment", "newline", "empty", "dotdot"],
+)
+def test_commit_links_need_a_full_commit_id(commit: str) -> None:
+    with pytest.raises(ValueError, match="full commit"):
+        report.commit_url(commit)
+    with pytest.raises(ValueError, match="full commit"):
+        report.queue_commit_url(commit)
 
 
 # --- labels ----------------------------------------------------------------------

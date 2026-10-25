@@ -3,7 +3,8 @@
 
 Pure functions: nothing here reads files, runs git or prints. Lines meant
 for a terminal (table(), show_lines()) are cleaned with sanitize.for_terminal;
-every other string still holds text from untrusted messages.
+every other string still holds text from untrusted messages. Every link the
+commands and the web page show is built here.
 
 An open request is "no backport found", never "nobody is working on it": the
 archive can only show what was mailed.
@@ -19,6 +20,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from stable_backlog import gitio
 from stable_backlog.mirror import Collected
 from stable_backlog.model import Confidence, Status
 from stable_backlog.queue import QueueScan
@@ -27,6 +29,10 @@ from stable_backlog.status import ItemState, version_key
 from stable_backlog.store import SnapshotInfo
 
 LORE_LIST_URL = "https://lore.kernel.org/stable/"
+LINUX_COMMIT_URL = "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id="
+QUEUE_COMMIT_URL = (
+    "https://git.kernel.org/pub/scm/linux/kernel/git/stable/stable-queue.git/commit/?id="
+)
 # RFC 3986 path characters, left as they are, as public-inbox writes its links;
 # "/", "?", "#", "%" and everything else are percent-encoded.
 _MESSAGE_ID_SAFE = "@!$&'()*+,;=:._~-"
@@ -54,6 +60,16 @@ def lore_url(message_id: str) -> str | None:
     if "@" not in message_id:
         return None
     return f"{LORE_LIST_URL}{urllib.parse.quote(message_id, safe=_MESSAGE_ID_SAFE)}/"
+
+
+def commit_url(upstream: str) -> str:
+    """The upstream commit in Linus's tree on git.kernel.org."""
+    return LINUX_COMMIT_URL + gitio.validate_full_hash(upstream)
+
+
+def queue_commit_url(rev: str) -> str:
+    """A stable-queue commit on git.kernel.org."""
+    return QUEUE_COMMIT_URL + gitio.validate_full_hash(rev)
 
 
 def label(state: ItemState) -> str:

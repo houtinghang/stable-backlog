@@ -15,8 +15,8 @@ FAILED --> BACKPORT_POSTED --> QUEUED --> RELEASED
 
 **Status: early development.** The data layer (parsing the archive and
 stable-queue, deriving the state of each request), `stable-backlog sync`,
-`list`, `show` and `export --json` exist and are tested; the web page and a
-release are not done yet.
+`list`, `show` and `export` (JSON and the web page) exist and are tested;
+publishing the page every day and a release are not done yet.
 
 ## Why
 
@@ -143,7 +143,7 @@ backport.
 ### export
 
 `stable-backlog export --json [-o FILE]` writes every request, in every
-status, as JSON for scripts and for the planned web page: where the data came
+status, as JSON for scripts: where the data came
 from (both mirror commits and their dates), how many messages were read and
 skipped, counts per status, and for each (commit, tree) its state, author,
 changed files, FAILED reports, backports, replies and stable-queue files,
@@ -151,6 +151,14 @@ with lore links. Text from messages is kept as it was mailed, escaped as
 `\uXXXX`, so the output is printable ASCII only. With `-o`, the file is
 replaced in one step, so a reader never sees half of it. The format is
 described in [docs/DESIGN.md](docs/DESIGN.md).
+
+`stable-backlog export --html [-o FILE]` writes the web page: one static
+HTML file, without JavaScript, that lists the requests with no backport
+found for all trees and for each tree, with links to the FAILED reports and
+replies on lore and to the upstream commits on git.kernel.org. Open it
+directly in a browser; no web server is needed. It links to
+`stable-backlog.json` next to it, so write the JSON there too if you want
+that link to work.
 
 ## Security
 

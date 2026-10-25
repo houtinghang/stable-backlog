@@ -540,6 +540,55 @@ def test_export_to_a_directory_is_refused(
     assert not any(p.name.endswith(".tmp") for p in tmp_path.iterdir())
 
 
+# --- export --html ----------------------------------------------------------------
+
+
+def test_export_html_to_stdout(
+    snapshot: Path, cache_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run(cache_dir, "export", "--html") == 0
+    out, err = capsys.readouterr()
+    assert out.startswith("<!DOCTYPE html>\n")
+    assert out.endswith("</html>\n")
+    assert f"stable-backlog {__version__}" in out
+    assert "All trees: 2 commits with no backport found" in out
+    assert f"{H1[:12]}</code>" in out
+    assert f"{H2[:12]}</code>" in out
+    assert TTY[:12] not in out  # queued: only counted in the summary
+    assert "lore up to" in err
+
+
+def test_export_html_to_a_file(
+    snapshot: Path, cache_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    target = tmp_path / "index.html"
+    target.write_text("old\n")
+    assert run(cache_dir, "export", "--html", "-o", str(target)) == 0
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert target.read_text(encoding="ascii").startswith("<!DOCTYPE html>\n")
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["index.html"]
+    assert f"wrote the page (3 requests with no backport found) to {target}" in err
+
+
+def test_golden_page_lists_no_request(
+    make_inbox: InboxFactory,
+    remotes: Remotes,
+    queue_remote: Path,
+    cache_dir: Path,
+    golden_mails: list[bytes],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Every golden request was answered: the page must not list any of them.
+    remotes.point(LORE_URL, make_inbox(golden_mails))
+    cli.main(["sync", "--cache-dir", str(cache_dir)], now=NOW)
+    capsys.readouterr()
+    assert run(cache_dir, "export", "--html") == 0
+    out = capsys.readouterr().out
+    assert "All trees: 0 commits with no backport found" in out
+    assert TTY[:12] not in out
+
+
 def test_list_and_show_read_the_snapshot_only(
     snapshot: Path, cache_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -555,6 +604,7 @@ def test_list_and_show_read_the_snapshot_only(
         ["show", H1[:12]],
         ["show", "nope@x"],
         ["export", "--json"],
+        ["export", "--html"],
     ):
         run(cache_dir, *argv)
     after = {p.name: p.read_bytes() for p in cache_dir.iterdir() if p.is_file()}
@@ -595,6 +645,7 @@ def test_list_with_an_old_snapshot_asks_for_sync(
         ["list", "--path", "/"],
         ["show"],
         ["export"],
+        ["export", "--json", "--html"],
     ],
     ids=[
         "no-command",
@@ -609,6 +660,7 @@ def test_list_with_an_old_snapshot_asks_for_sync(
         "empty-path",
         "show-without-query",
         "export-without-format",
+        "export-two-formats",
     ],
 )
 def test_usage_errors_exit_2(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:

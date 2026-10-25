@@ -2,8 +2,8 @@
 
 This document describes how stable-backlog reads its data, how it decides the
 state of each FAILED request, and the rules that keep it safe to run on data
-anyone can write. It covers the data layer, keeping the mirrors up to date
-and the commands that read the snapshot; the web page will be added later.
+anyone can write. It covers the data layer, keeping the mirrors up to date,
+the commands that read the snapshot and the web page.
 
 ## 1. Goal
 
@@ -192,8 +192,8 @@ already answered it, so:
 
 - Parse failures are returned as `Skipped(commit, message_id, reason)` and
   stored. Every command prints their number with samples on stderr, the
-  JSON export has `skipped` and `skipped_samples`, and the planned web page
-  will show them in its footer.
+  JSON export has `skipped` and `skipped_samples`, and the web page shows
+  their number at the top and samples at the end.
 - A missing object, an unexpected mirror layout or a failing `git` command
   raises an error with the command, repository and stderr. Nothing is turned
   into an empty result.
@@ -221,7 +221,7 @@ every message, header and patch file is treated as written by an attacker.
 | Strip escape sequences and control characters before printing to a terminal | `sanitize.py` | `test_security.py` |
 | Links go only to lore message pages; the Message-ID is percent-encoded, and an id without `@` gets no link | `report.py` | `test_report.py` hostile Message-IDs |
 | Commands that read the snapshot open it read-only and run neither git nor anything on the network | `store.py`, `cli.py` | `test_cli.py`, `test_store.py` |
-| HTML output (later): escape everything, link only to lore / git.kernel.org with URL-encoded Message-IDs, CSP `default-src 'none'`, no JavaScript | `report` (M3) | |
+| The web page has no JavaScript; its Content-Security-Policy allows nothing but its own style (by hash); text from messages is escaped after control characters are removed, and titles and names are isolated with `<bdi>`; links built from data go only to lore and git.kernel.org; the page is ASCII | `page.py`, `report.py` | `test_page.py` hostile titles, names, Message-IDs and tree names |
 | No third-party runtime dependencies; development tools pinned with hashes | `pyproject.toml`, `requirements-dev.txt` | |
 
 ## 8. Storage
@@ -320,6 +320,51 @@ is not known is `null`.
 without `@`. `skipped_samples` holds at most 100 entries. On 90 days of the
 list the file is about 4.5 MB and takes under a second to write.
 
+### Web page
+
+`export --html` writes one static HTML file, the same way as `--json` (to
+stdout, or with `-o FILE` replacing `FILE` in one step). It shows the
+requests with no backport found; the other states are only counted. From
+top to bottom:
+
+- a notice: not an official tool; early development, not yet checked by
+  hand; "no backport found" is not "nobody is working on it";
+- the number of messages that could not be read, if any;
+- where the data comes from: the newest lore message, the stable-queue
+  commit (linked) and its date, the dates of the FAILED reports covered,
+  and when the page was built;
+- the number of requests per tree and state;
+- all trees, one row per commit as in `list`: age, commit (linked to
+  git.kernel.org), title, author name, the trees (each linked to its FAILED
+  report) and the number of replies;
+- one section per tree, one row per request: the FAILED reports (dates
+  linked to lore) and each reply (linked);
+- the messages that could not be read (at most 20), a link to the JSON
+  published next to the page, and a link to the project.
+
+Ages are counted as in `list`, so the same snapshot always gives the same
+page. Author addresses are left out of the page; the JSON has them.
+
+There is no JavaScript: the sections are reached through links within the
+page, and the browser's own search finds a name or a path. GitHub Pages
+cannot set HTTP headers, so the Content-Security-Policy is a `<meta>`
+element at the top of `<head>`:
+
+```
+default-src 'none'; style-src 'sha256-<hash of the style>'; base-uri 'none'; form-action 'none'
+```
+
+`base-uri` and `form-action` do not fall back to `default-src`, so they are
+given as well. Text from messages passes through one function that removes
+escape sequences and control characters (as for the terminal) and then
+escapes it for HTML; titles and names are wrapped in `<bdi>`, so
+bidirectional control characters in them cannot reorder the rest of a row.
+Tree names are used in element ids and are checked to be `X.Y` first. Links
+built from data come from `report` only (`lore_url`, `commit_url`,
+`queue_commit_url`; the last two accept only full commit ids). The page is
+written as ASCII, with other characters as `&#NNNN;`. On 90 days of the
+list it is about 370 KB.
+
 ## 10. Modules
 
 | Module | Job |
@@ -334,7 +379,8 @@ list the file is about 4.5 MB and takes under a second to write.
 | `sanitize.py` | make untrusted text safe for a terminal |
 | `cache.py` | the cache directory and the sync lock |
 | `sync.py` | update the mirrors and rebuild the snapshot |
-| `report.py` | select, group and label items for `list` and `show`; lore links; the JSON export |
+| `report.py` | select, group and label items for `list` and `show`; links to lore and git.kernel.org; the JSON export |
+| `page.py` | the web page (`export --html`) |
 | `cli.py` | the `stable-backlog` command |
 
 ## 11. Known limitations
