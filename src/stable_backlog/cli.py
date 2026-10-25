@@ -10,10 +10,12 @@ sanitize.for_terminal first, log records included.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import os
 import sqlite3
 import sys
+import tempfile
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -119,6 +121,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("query", metavar="COMMIT|MESSAGE-ID")
     _add_cache_dir(p)
+    p = commands.add_parser(
+        "export",
+        help="write every request, in every status, as JSON (from the snapshot, no network)",
+        description="The JSON format is described in docs/DESIGN.md. Text from messages is"
+        " kept as it is, escaped as \\uXXXX: the output is printable ASCII only.",
+    )
+    p.add_argument("--json", action="store_true", required=True, help="write JSON")
+    p.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="write to this file (replaced in one step) instead of stdout",
+    )
+    _add_cache_dir(p)
     return parser
 
 
@@ -170,7 +186,7 @@ def main(argv: Sequence[str] | None = None, *, now: datetime | None = None) -> i
     handler.setFormatter(_TerminalFormatter(f"{PROG}: %(levelname)s: %(message)s"))
     logger = logging.getLogger("stable_backlog")
     logger.addHandler(handler)
-    commands = {"sync": _sync, "list": _list, "show": _show}
+    commands = {"sync": _sync, "list": _list, "show": _show, "export": _export}
     try:
         return commands[args.command](args, now or datetime.now(timezone.utc))
     except _FAILURES as e:
@@ -196,6 +212,7 @@ def _sync(args: argparse.Namespace, now: datetime) -> int:
 class _Snapshot:
     info: store.SnapshotInfo
     collected: mirror.Collected
+    scan: queue.QueueScan
     states: tuple[status.ItemState, ...]
 
 
@@ -206,7 +223,7 @@ def _load(args: argparse.Namespace) -> _Snapshot:
         collected = store.load_collected(conn)
         scan = store.load_queue(conn)
         info = store.load_snapshot_info(conn)
-    return _Snapshot(info, collected, status.compute(collected, scan))
+    return _Snapshot(info, collected, scan, status.compute(collected, scan))
 
 
 def _utc(when: datetime) -> str:
@@ -299,6 +316,50 @@ def _show(args: argparse.Namespace, now: datetime) -> int:
         print(line)
     _note(_snapshot_notes(snap, now))
     return 0
+
+
+def _export(args: argparse.Namespace, now: datetime) -> int:
+    snap = _load(args)
+    doc = report.export_document(
+        snap.collected,
+        snap.scan,
+        snap.info,
+        snap.states,
+        generated_at=now,
+        tool=f"{PROG} {__version__}",
+        lore_source=sync.LORE.url,
+        queue_source=sync.QUEUE.url,
+    )
+    text = report.export_json(doc)
+    lines: list[str] = []
+    if args.output is None:
+        sys.stdout.write(text)
+    else:
+        _write_replacing(args.output, text)
+        lines.append(f"wrote {_count(len(snap.states), 'item')} to {args.output}")
+    _note([*lines, *_snapshot_notes(snap, now)])
+    return 0
+
+
+def _write_replacing(path: Path, text: str) -> None:
+    """Write a temporary file next to path, then rename it over path, so a
+    reader sees the old file or the new one, never half of it."""
+    if path.is_dir():
+        raise OSError(f"{path} is a directory; give a file name")
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="ascii", newline="\n") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        mask = os.umask(0)  # mkstemp makes the file 0600; give it the usual mode
+        os.umask(mask)
+        os.chmod(tmp, 0o666 & ~mask)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
+        raise
 
 
 def _count(n: int, word: str, plural: str | None = None) -> str:

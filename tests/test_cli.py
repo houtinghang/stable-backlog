@@ -8,15 +8,19 @@ summary and all errors go to stderr, cleaned of terminal escape sequences.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
+import os
+import re
 import sqlite3
+import stat
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from stable_backlog import __version__, cli, gitio, sync
-from tests.conftest import FIRST, LORE_URL, InboxFactory, Remotes
+from tests.conftest import FIRST, LORE_URL, QUEUE_URL, InboxFactory, Remotes
 from tests.mailfactory import build_mail, failed_mail
 
 NOW = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
@@ -440,6 +444,102 @@ def test_show_not_found_exits_1_and_says_what_the_snapshot_covers(
     assert "2026-09-04 to 2026-10-14" in err
 
 
+# --- export --json ----------------------------------------------------------------
+
+
+def test_export_json_to_stdout(
+    snapshot: Path, cache_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run(cache_dir, "export", "--json") == 0
+    out, err = capsys.readouterr()
+    doc = json.loads(out)
+    assert doc["format"] == "stable-backlog/1"
+    assert doc["tool"] == f"stable-backlog {__version__}"
+    assert doc["generated_at"] == NOW.isoformat()
+    assert doc["snapshot"]["lore"]["url"] == LORE_URL
+    assert doc["snapshot"]["stable_queue"]["url"] == QUEUE_URL
+    assert doc["snapshot"]["offline"] is False
+    assert re.fullmatch("[0-9a-f]{40}", doc["snapshot"]["lore"]["rev"])
+    assert doc["messages_read"] == 5
+    assert (doc["skipped"], doc["skipped_samples"]) == (0, [])
+    assert doc["counts"] == {"FAILED": 3, "BACKPORT_POSTED": 0, "QUEUED": 1, "RELEASED": 0}
+    assert [(i["upstream"], i["tree"]) for i in doc["items"]] == [
+        (H1, "5.15"),
+        (H1, "6.1"),
+        (H2, "6.6"),
+        (TTY, "6.1"),
+    ]
+    assert "lore up to" in err
+
+
+def test_golden_export_matches_the_known_states(
+    make_inbox: InboxFactory,
+    remotes: Remotes,
+    queue_remote: Path,
+    cache_dir: Path,
+    golden_mails: list[bytes],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    remotes.point(LORE_URL, make_inbox(golden_mails))
+    cli.main(["sync", "--cache-dir", str(cache_dir)], now=NOW)
+    capsys.readouterr()
+    assert run(cache_dir, "export", "--json") == 0
+    items = {(i["upstream"], i["tree"]): i for i in json.loads(capsys.readouterr().out)["items"]}
+    assert len(items) == 19
+    assert {k for k, v in items.items() if v["status"] == "FAILED"} == set()
+    assert items[(TTY, "6.1")]["label"] == "queued (queue-6.1)"
+    assert items[(TTY, "6.6")]["release"] == "6.6.160"
+    assert items[(TTY, "6.6")]["author"] == {"name": "Johan Hovold", "email": "johan@kernel.org"}
+
+
+def test_export_to_a_file_replaces_it_atomically(
+    snapshot: Path, cache_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out_dir = tmp_path / "site"
+    out_dir.mkdir()
+    target = out_dir / "backlog.json"
+    target.write_text("old\n")
+    old_mask = os.umask(0o022)
+    try:
+        assert run(cache_dir, "export", "--json", "-o", str(target)) == 0
+    finally:
+        os.umask(old_mask)
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert json.loads(target.read_text())["counts"]["FAILED"] == 3
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+    assert sorted(p.name for p in out_dir.iterdir()) == ["backlog.json"]
+    assert f"wrote 4 items to {target}" in err
+
+
+def test_export_failure_keeps_the_old_file(
+    snapshot: Path,
+    cache_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_path / "backlog.json"
+    target.write_text("old\n")
+
+    def broken(*args: object) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", broken)
+    assert run(cache_dir, "export", "--json", "-o", str(target)) == 1
+    assert target.read_text() == "old\n"
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["backlog.json"]
+    assert "No space left on device" in capsys.readouterr().err
+
+
+def test_export_to_a_directory_is_refused(
+    snapshot: Path, cache_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run(cache_dir, "export", "--json", "-o", str(tmp_path)) == 1
+    assert "is a directory" in capsys.readouterr().err
+    assert not any(p.name.endswith(".tmp") for p in tmp_path.iterdir())
+
+
 def test_list_and_show_read_the_snapshot_only(
     snapshot: Path, cache_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -449,7 +549,13 @@ def test_list_and_show_read_the_snapshot_only(
     for name in ("run", "popen", "network_run"):
         monkeypatch.setattr(gitio, name, no_git)
     before = {p.name: p.read_bytes() for p in cache_dir.iterdir() if p.is_file()}
-    for argv in (["list"], ["list", "--all"], ["show", H1[:12]], ["show", "nope@x"]):
+    for argv in (
+        ["list"],
+        ["list", "--all"],
+        ["show", H1[:12]],
+        ["show", "nope@x"],
+        ["export", "--json"],
+    ):
         run(cache_dir, *argv)
     after = {p.name: p.read_bytes() for p in cache_dir.iterdir() if p.is_file()}
     assert after == before
@@ -488,6 +594,7 @@ def test_list_with_an_old_snapshot_asks_for_sync(
         ["list", "--status", "failed", "--all"],
         ["list", "--path", "/"],
         ["show"],
+        ["export"],
     ],
     ids=[
         "no-command",
@@ -501,6 +608,7 @@ def test_list_with_an_old_snapshot_asks_for_sync(
         "status-and-all",
         "empty-path",
         "show-without-query",
+        "export-without-format",
     ],
 )
 def test_usage_errors_exit_2(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:

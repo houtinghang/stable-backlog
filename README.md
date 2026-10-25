@@ -15,7 +15,7 @@ FAILED --> BACKPORT_POSTED --> QUEUED --> RELEASED
 
 **Status: early development.** The data layer (parsing the archive and
 stable-queue, deriving the state of each request), `stable-backlog sync`,
-`list` and `show` exist and are tested; the JSON export, the web page and a
+`list`, `show` and `export --json` exist and are tested; the web page and a
 release are not done yet.
 
 ## Why
@@ -138,6 +138,18 @@ A backport matched only by its title is marked "matched by title only". If
 no FAILED report is found, `show` exits with status 1 and says which dates the
 snapshot covers: a commit without a FAILED report there may still need a
 backport.
+
+### export
+
+`stable-backlog export --json [-o FILE]` writes every request, in every
+status, as JSON for scripts and for the planned web page: where the data came
+from (both mirror commits and their dates), how many messages were read and
+skipped, counts per status, and for each (commit, tree) its state, author,
+changed files, FAILED reports, backports, replies and stable-queue files,
+with lore links. Text from messages is kept as it was mailed, escaped as
+`\uXXXX`, so the output is printable ASCII only. With `-o`, the file is
+replaced in one step, so a reader never sees half of it. The format is
+described in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Security
 

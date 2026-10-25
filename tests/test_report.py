@@ -7,14 +7,16 @@ status.compute, so the tests see the same items the commands do.
 
 from __future__ import annotations
 
+import json
 import re
 import urllib.parse
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import pytest
 
-from stable_backlog import mirror, queue, report, status
+from stable_backlog import mirror, queue, report, status, store
 from stable_backlog.model import (
     BackportPost,
     Envelope,
@@ -427,3 +429,143 @@ def test_show_lines() -> None:
     assert f"reply     {PREFIX}r1@x/" in text
     assert "release   releases/6.6.160/a.patch" in text
     assert "\x1b" not in text
+
+
+# --- export --json ---------------------------------------------------------------------
+
+LORE = "https://lore.kernel.org/stable/git/2.git"
+QUEUE = "https://git.kernel.org/pub/scm/linux/kernel/git/stable/stable-queue.git"
+
+
+def export_text() -> str:
+    collected = mirror.Collected(
+        "a" * 40,
+        12,
+        (
+            failed(H1, "6.1", "f1@gregkh", days_ago=20, files=["a/b.c"]),
+            failed(H1, "6.6", "f2@gregkh", days_ago=20),
+            failed(H2, "6.1", "no-at-sign", title="bar: é \x1b[2J\x7f\x9b"),
+        ),
+        (backport("6.6", None, "b1@x", title="foo: fix the bar"),),
+        (),
+        (OtherMail(env("r1@x", reply_to="f1@gregkh")),),
+        (mirror.Skipped("c" * 40, None, "too-large"),),
+    )
+    scan = queue.QueueScan("b" * 40, (entry(H2, "6.1", "releases/6.1.190"),), 1, 0, 0)
+    info = store.SnapshotInfo(REF, True, REF, REF - timedelta(hours=4))
+    doc = report.export_document(
+        collected,
+        scan,
+        info,
+        status.compute(collected, scan),
+        generated_at=REF + timedelta(hours=1),
+        tool="stable-backlog 9.9",
+        lore_source=LORE,
+        queue_source=QUEUE,
+    )
+    return report.export_json(doc)
+
+
+def document() -> Any:
+    """The export, read back the way a consumer would."""
+    return json.loads(export_text())
+
+
+def test_export_document_header() -> None:
+    doc = document()
+    assert doc["format"] == "stable-backlog/1"
+    assert doc["generated_at"] == "2026-10-24T19:00:00+00:00"
+    assert doc["tool"] == "stable-backlog 9.9"
+    assert doc["snapshot"] == {
+        "synced_at": "2026-10-24T18:00:00+00:00",
+        "offline": True,
+        "lore": {"url": LORE, "rev": "a" * 40, "newest": "2026-10-24T18:00:00+00:00"},
+        "stable_queue": {"url": QUEUE, "rev": "b" * 40, "newest": "2026-10-24T14:00:00+00:00"},
+    }
+    assert doc["messages_read"] == 12
+    assert doc["skipped"] == 1
+    assert doc["skipped_samples"] == [
+        {"commit": "c" * 40, "message_id": None, "reason": "too-large"}
+    ]
+    assert doc["counts"] == {"FAILED": 1, "BACKPORT_POSTED": 1, "QUEUED": 0, "RELEASED": 1}
+
+
+def test_export_document_items() -> None:
+    items = document()["items"]
+    assert [(i["upstream"], i["tree"], i["status"]) for i in items] == [
+        (H1, "6.1", "FAILED"),
+        (H1, "6.6", "BACKPORT_POSTED"),
+        (H2, "6.1", "RELEASED"),
+    ]
+    first, posted, released = items
+    assert first == {
+        "upstream": H1,
+        "tree": "6.1",
+        "status": "FAILED",
+        "label": "no backport found",
+        "confidence": None,
+        "title": "foo: fix the bar",
+        "author": {"name": "Some Author", "email": "author@example.org"},
+        "files": ["a/b.c"],
+        "first_failed": "2026-10-04T18:00:00+00:00",
+        "failed": [
+            {
+                "message_id": "f1@gregkh",
+                "date": "2026-10-04T18:00:00+00:00",
+                "url": f"{PREFIX}f1@gregkh/",
+            }
+        ],
+        "backports": [],
+        "replies": [{"message_id": "r1@x", "url": f"{PREFIX}r1@x/"}],
+        "queue": [],
+        "release": None,
+    }
+    assert posted["confidence"] == "title"
+    assert posted["label"] == "backport posted (matched by title only)"
+    assert posted["backports"] == [
+        {
+            "message_id": "b1@x",
+            "sender": "someone@example.org",
+            "date": "2026-10-14T18:00:00+00:00",
+            "confidence": "title",
+            "url": f"{PREFIX}b1@x/",
+        }
+    ]
+    assert released["failed"][0]["url"] is None  # no "@": no link
+    assert released["queue"] == [
+        {
+            "location": "release",
+            "directory": "releases/6.1.190",
+            "path": "releases/6.1.190/a.patch",
+            "release": "6.1.190",
+        }
+    ]
+    assert released["release"] == "6.1.190"
+
+
+def test_export_without_an_author_says_null() -> None:
+    collected = mirror.Collected(
+        "a" * 40, 1, (failed(H1, "6.1", "f1@gregkh", author=("", ""), files=()),), (), (), (), ()
+    )
+    scan = queue.QueueScan("b" * 40, (), 0, 0, 0)
+    info = store.SnapshotInfo(REF, False, REF, REF)
+    doc = report.export_document(
+        collected,
+        scan,
+        info,
+        status.compute(collected, scan),
+        generated_at=REF,
+        tool="t",
+        lore_source=LORE,
+        queue_source=QUEUE,
+    )
+    items = json.loads(report.export_json(doc))["items"]
+    assert (items[0]["author"], items[0]["files"]) == (None, [])
+
+
+def test_export_json_is_printable_ascii_only() -> None:
+    # Titles hold anything anyone mailed: escapes, C1 controls, DEL, non-ASCII.
+    text = export_text()
+    assert text.endswith("\n")
+    assert all(c == "\n" or " " <= c <= "~" for c in text)
+    assert json.loads(text)["items"][2]["title"] == "bar: é \x1b[2J\x7f\x9b"

@@ -11,6 +11,7 @@ archive can only show what was mailed.
 
 from __future__ import annotations
 
+import json
 import re
 import urllib.parse
 from collections import defaultdict
@@ -18,9 +19,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from stable_backlog.mirror import Collected
 from stable_backlog.model import Confidence, Status
+from stable_backlog.queue import QueueScan
 from stable_backlog.sanitize import for_terminal
 from stable_backlog.status import ItemState, version_key
+from stable_backlog.store import SnapshotInfo
 
 LORE_LIST_URL = "https://lore.kernel.org/stable/"
 # RFC 3986 path characters, left as they are, as public-inbox writes its links;
@@ -37,6 +41,8 @@ LABELS = {
     Status.RELEASED: "released",
 }
 TITLE_ONLY = "matched by title only"
+EXPORT_FORMAT = "stable-backlog/1"  # change on any incompatible change to the JSON
+EXPORT_SKIPPED_SAMPLES = 100
 
 
 def lore_url(message_id: str) -> str | None:
@@ -285,3 +291,107 @@ def show_lines(upstream: str, states: Iterable[ItemState]) -> list[str]:
         for e in s.queue:
             lines.append(f"      {e.location:<9} {e.path}")
     return [for_terminal(line) for line in lines]
+
+
+# --- export --json ---------------------------------------------------------------------
+
+
+def _iso(when: datetime | None) -> str | None:
+    return when.astimezone(timezone.utc).isoformat() if when is not None else None
+
+
+def _url(message_id: str | None) -> str | None:
+    return lore_url(message_id) if message_id is not None else None
+
+
+def _export_item(s: ItemState) -> dict[str, object]:
+    name, addr = author(s)
+    return {
+        "upstream": s.upstream,
+        "tree": s.tree,
+        "status": s.status.value,
+        "label": label(s),
+        "confidence": s.confidence.value if s.confidence is not None else None,
+        "title": s.failed[0].title,
+        "author": {"name": name, "email": addr} if addr else None,
+        "files": list(files(s)),
+        "first_failed": _iso(first_failed(s)),
+        "failed": [
+            {
+                "message_id": r.envelope.message_id,
+                "date": _iso(r.envelope.date),
+                "url": _url(r.envelope.message_id),
+            }
+            for r in s.failed
+        ],
+        "backports": [
+            {
+                "message_id": m.post.envelope.message_id,
+                "sender": m.post.envelope.sender,
+                "date": _iso(m.post.envelope.date),
+                "confidence": m.confidence.value,
+                "url": _url(m.post.envelope.message_id),
+            }
+            for m in s.backports
+        ],
+        "replies": [{"message_id": mid, "url": lore_url(mid)} for mid in s.replies],
+        "queue": [
+            {
+                "location": e.location,
+                "directory": e.directory,
+                "path": e.path,
+                "release": e.release,
+            }
+            for e in s.queue
+        ],
+        "release": s.release,
+    }
+
+
+def export_document(
+    collected: Collected,
+    scan: QueueScan,
+    info: SnapshotInfo,
+    states: Iterable[ItemState],
+    *,
+    generated_at: datetime,
+    tool: str,
+    lore_source: str,
+    queue_source: str,
+) -> dict[str, object]:
+    """Every item, in every status, with where the data came from (see DESIGN)."""
+    items = sorted(states, key=lambda s: (s.upstream, version_key(s.tree)))
+    return {
+        "format": EXPORT_FORMAT,
+        "generated_at": _iso(generated_at),
+        "tool": tool,
+        "snapshot": {
+            "synced_at": _iso(info.synced_at),
+            "offline": info.offline,
+            "lore": {
+                "url": lore_source,
+                "rev": collected.mirror_rev,
+                "newest": _iso(info.lore_newest),
+            },
+            "stable_queue": {
+                "url": queue_source,
+                "rev": scan.rev,
+                "newest": _iso(info.queue_newest),
+            },
+        },
+        "messages_read": collected.messages_read,
+        "skipped": len(collected.skipped),
+        "skipped_samples": [
+            {"commit": k.commit, "message_id": k.message_id, "reason": k.reason}
+            for k in collected.skipped[:EXPORT_SKIPPED_SAMPLES]
+        ],
+        "counts": {st.value: sum(1 for s in items if s.status is st) for st in Status},
+        "items": [_export_item(s) for s in items],
+    }
+
+
+def export_json(doc: dict[str, object]) -> str:
+    """The document as printable ASCII: escapes, controls and non-ASCII become \\uXXXX."""
+    text = json.dumps(doc, ensure_ascii=True, indent=1)
+    # ensure_ascii leaves DEL as it is, and DEL can only occur inside a string.
+    return text.replace("\x7f", "\\u007f") + "\n"

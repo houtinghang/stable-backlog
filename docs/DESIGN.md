@@ -176,7 +176,9 @@ The worst failure for this tool is reporting a request as open when someone
 already answered it, so:
 
 - Parse failures are returned as `Skipped(commit, message_id, reason)` and
-  stored; they will be shown in the CLI, the JSON and the web page footer.
+  stored. Every command prints their number with samples on stderr, the
+  JSON export has `skipped` and `skipped_samples`, and the planned web page
+  will show them in its footer.
 - A missing object, an unexpected mirror layout or a failing `git` command
   raises an error with the command, repository and stderr. Nothing is turned
   into an empty result.
@@ -218,7 +220,7 @@ to rebuild it with `stable-backlog sync` (`--offline` is enough).
 
 ## 9. Commands that read the snapshot
 
-`list` and `show` only read `snapshot.sqlite`. It is opened read-only
+`list`, `show` and `export` only read `snapshot.sqlite`. It is opened read-only
 (`mode=ro`): nothing is written or created, git is not run and the network is
 not used. A missing snapshot, or one from another schema version, stops the
 command with a hint to run `sync`. Building the item states takes about 0.1
@@ -254,6 +256,55 @@ up by the first 12 digits of their hash, the shortest hash that is accepted.
   `@` (every RFC 5322 Message-ID has one) gets no link, because `.` or `..`
   would be a dot segment.
 
+### JSON export
+
+`export --json` writes one document with every item, in every status, to
+stdout or, with `-o FILE`, to a temporary file in the same directory that
+then replaces `FILE` (`os.replace`), so a reader sees the old file or the new
+one. `-o` naming a directory is refused. Text from messages is kept as it
+was mailed; the JSON is written with `ensure_ascii`, and DEL is escaped too,
+so the output is printable ASCII only. Consumers must still escape it for
+their own output (HTML, terminals). Times are ISO 8601 in UTC; a field that
+is not known is `null`.
+
+```
+{
+  "format": "stable-backlog/1",       changed on any incompatible change
+  "generated_at": "...",               when export ran
+  "tool": "stable-backlog <version>",
+  "snapshot": {
+    "synced_at": "...", "offline": false,       offline: rebuilt without fetching
+    "lore": {"url": "...", "rev": "<commit>", "newest": "..."},
+    "stable_queue": {"url": "...", "rev": "<commit>", "newest": "..."}
+  },
+  "messages_read": 70784,
+  "skipped": 1,                        messages that could not be read
+  "skipped_samples": [{"commit": "...", "message_id": null, "reason": "too-large"}],
+  "counts": {"FAILED": 540, "BACKPORT_POSTED": 661, "QUEUED": 702, "RELEASED": 1694},
+  "items": [{                          sorted by upstream, then tree
+    "upstream": "<40 hex>", "tree": "6.6",
+    "status": "FAILED",                FAILED = no backport found
+    "label": "no backport found",      as list / show print it
+    "confidence": null,                "hash", "title" (low confidence) or null
+    "title": "...",
+    "author": {"name": "...", "email": "..."},   or null
+    "files": ["..."],
+    "first_failed": "...",
+    "failed": [{"message_id": "...", "date": "...", "url": "..."}],
+    "backports": [{"message_id": "...", "sender": "...", "date": "...",
+                   "confidence": "hash", "url": "..."}],
+    "replies": [{"message_id": "...", "url": "..."}],
+    "queue": [{"location": "release", "directory": "releases/6.6.160",
+               "path": "...", "release": "6.6.160"}],
+    "release": "6.6.160"               first release that has it, or null
+  }]
+}
+```
+
+`url` is a lore link built by `report.lore_url`, or `null` for a Message-ID
+without `@`. `skipped_samples` holds at most 100 entries. On 90 days of the
+list the file is about 4.5 MB and takes under a second to write.
+
 ## 10. Modules
 
 | Module | Job |
@@ -268,7 +319,7 @@ up by the first 12 digits of their hash, the shortest hash that is accepted.
 | `sanitize.py` | make untrusted text safe for a terminal |
 | `cache.py` | the cache directory and the sync lock |
 | `sync.py` | update the mirrors and rebuild the snapshot |
-| `report.py` | select, group and label items for `list` and `show`; lore links |
+| `report.py` | select, group and label items for `list` and `show`; lore links; the JSON export |
 | `cli.py` | the `stable-backlog` command |
 
 ## 11. Known limitations
